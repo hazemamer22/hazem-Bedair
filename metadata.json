@@ -1,0 +1,6 @@
+{
+  "name": "إدارة علائق وتغذية مزرعة الماشية",
+  "description": "نظام عملي متكامل لإدارة خامات وعلائق المزرعة، العنابر، لفات المكسر، أوامر تحضير العلف، كشوف السائقين، والتقارير اليومية.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
