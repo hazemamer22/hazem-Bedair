@@ -8,6 +8,8 @@ export interface RawMaterial {
   price?: number; // optional price per kg
   status: RawMaterialStatus;
   notes?: string;
+  currentStockKg?: number; // Current stock in warehouse in kg
+  minStockKg?: number; // Safe minimum stock threshold
 }
 
 export interface RationIngredient {
@@ -87,10 +89,25 @@ export interface DailyBarnState {
   displayName?: string;
 }
 
+export interface MilkSession {
+  id: string;
+  name: string; // e.g., "الحلبة الأولى (صباحية)", "الحلبة الثانية (مسائية)", "الحلبة الثالثة"
+  amountKg: number; // in kg / Liters
+  time?: string;
+}
+
+export interface MilkProductionData {
+  sessions: MilkSession[];
+  refusalPercent: number; // نسبة الراجع من الحلاب % (e.g., 5%)
+  milkingHeadCount?: number; // عدد أبقار الحلاب (اختياري للتعديل اليدوي، أو يُحسب تلقائياً)
+  notes?: string;
+}
+
 export interface DailyOperationPlan {
   date: string; // YYYY-MM-DD
   batches: MixBatch[];
   dailyBarnStates?: Record<string, DailyBarnState>; // barnId -> snapshot state for date
+  milkProduction?: MilkProductionData;
   notes?: string;
 }
 

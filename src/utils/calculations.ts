@@ -163,27 +163,146 @@ export function calculateBatchIngredients(
 
 /**
  * Sums up allocated KG for all barns in a single mixer batch.
+ * If allocatedPercent is defined, derives the allocatedKg dynamically from barn's current daily demand.
  */
-export function calculateBatchAllocatedKg(batch: MixBatch): number {
+export function getDerivedAllocationKg(
+  allocation: { barnId: string; allocatedKg?: number; allocatedPercent?: number },
+  barn?: Barn,
+  categories: AnimalCategory[] = [],
+  rations: Ration[] = [],
+  dailyPlan?: DailyOperationPlan
+): number {
+  if (!allocation) return 0;
+  if (allocation.allocatedPercent !== undefined && barn) {
+    const demand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+    return Math.round(((demand * Number(allocation.allocatedPercent)) / 100) * 1000) / 1000;
+  }
+  return Number(allocation.allocatedKg) || 0;
+}
+
+/**
+ * Calculates the exact allocated KG for a barn from a percentage:
+ * allocatedKg = (barnDailyDemand * allocatedPercent) / 100
+ */
+export function calculateBarnAllocatedKgFromPercent(
+  barn: Barn,
+  allocatedPercent: number,
+  categories: AnimalCategory[] = [],
+  rations: Ration[] = [],
+  dailyPlan?: DailyOperationPlan
+): number {
+  if (!barn) return 0;
+  const demand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+  const safePercent = Math.max(0, isNaN(allocatedPercent) ? 0 : allocatedPercent);
+  return Math.round(((demand * safePercent) / 100) * 1000) / 1000;
+}
+
+/**
+ * Calculates the allocated percentage from a weight in KG:
+ * allocatedPercent = (allocatedKg / barnDailyDemand) * 100
+ */
+export function calculateBarnAllocatedPercentFromKg(
+  barn: Barn,
+  allocatedKg: number,
+  categories: AnimalCategory[] = [],
+  rations: Ration[] = [],
+  dailyPlan?: DailyOperationPlan
+): number {
+  if (!barn) return 0;
+  const demand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+  if (demand <= 0) return 0;
+  const safeKg = Math.max(0, isNaN(allocatedKg) ? 0 : allocatedKg);
+  return Math.round(((safeKg / demand) * 100) * 1000) / 1000;
+}
+
+/**
+ * Sums up allocated KG for all barns in a single mixer batch.
+ */
+export function calculateBatchAllocatedKg(
+  batch: MixBatch,
+  barns: Barn[] = [],
+  categories: AnimalCategory[] = [],
+  rations: Ration[] = [],
+  dailyPlan?: DailyOperationPlan
+): number {
   if (!batch || !batch.allocations) return 0;
-  return batch.allocations.reduce((sum, item) => sum + (Number(item.allocatedKg) || 0), 0);
+  return batch.allocations.reduce((sum, item) => {
+    const barn = barns.find((b) => b.id === item.barnId);
+    return sum + getDerivedAllocationKg(item, barn, categories, rations, dailyPlan);
+  }, 0);
+}
+
+/**
+ * Derives the total target weight of a batch by summing its allocations' derived weights.
+ * Falls back to batch.targetWeightKg if no allocations exist.
+ */
+export function getBatchDerivedTargetWeightKg(
+  batch: MixBatch,
+  barns: Barn[] = [],
+  categories: AnimalCategory[] = [],
+  rations: Ration[] = [],
+  dailyPlan?: DailyOperationPlan
+): number {
+  if (!batch) return 0;
+  if (!batch.allocations || batch.allocations.length === 0) {
+    return batch.targetWeightKg || 0;
+  }
+  const totalAllocated = calculateBatchAllocatedKg(batch, barns, categories, rations, dailyPlan);
+  return totalAllocated > 0 ? totalAllocated : batch.targetWeightKg;
 }
 
 /**
  * Calculates total allocated KG to a specific barn across ALL batches in today's daily plan.
  */
-export function calculateBarnTotalAllocatedKgToday(barnId: string, dailyPlan: DailyOperationPlan): number {
+export function calculateBarnTotalAllocatedKgToday(
+  barnId: string,
+  dailyPlan: DailyOperationPlan,
+  barns: Barn[] = [],
+  categories: AnimalCategory[] = [],
+  rations: Ration[] = []
+): number {
   if (!dailyPlan || !dailyPlan.batches) return 0;
+  const barn = barns.find((b) => b.id === barnId);
   let total = 0;
   dailyPlan.batches.forEach((batch) => {
     if (batch.allocations) {
       const barnAlloc = batch.allocations.find((a) => a.barnId === barnId);
       if (barnAlloc) {
-        total += Number(barnAlloc.allocatedKg) || 0;
+        total += getDerivedAllocationKg(barnAlloc, barn, categories, rations, dailyPlan);
       }
     }
   });
-  return Math.round(total * 100) / 100;
+  return Math.round(total * 1000) / 1000;
+}
+
+/**
+ * Calculates total allocated percentage to a specific barn across ALL batches in today's daily plan.
+ */
+export function calculateBarnTotalAllocatedPercentToday(
+  barnId: string,
+  dailyPlan: DailyOperationPlan,
+  barns: Barn[] = [],
+  categories: AnimalCategory[] = [],
+  rations: Ration[] = []
+): number {
+  if (!dailyPlan || !dailyPlan.batches) return 0;
+  const barn = barns.find((b) => b.id === barnId);
+  const demand = barn ? calculateBarnDailyDemand(barn, categories, rations, dailyPlan) : 0;
+
+  let totalPercent = 0;
+  dailyPlan.batches.forEach((batch) => {
+    if (batch.allocations) {
+      const barnAlloc = batch.allocations.find((a) => a.barnId === barnId);
+      if (barnAlloc) {
+        if (barnAlloc.allocatedPercent !== undefined) {
+          totalPercent += Number(barnAlloc.allocatedPercent) || 0;
+        } else if (demand > 0) {
+          totalPercent += ((Number(barnAlloc.allocatedKg) || 0) / demand) * 100;
+        }
+      }
+    }
+  });
+  return Math.round(totalPercent * 1000) / 1000;
 }
 
 export interface BatchValidationResult {
@@ -248,30 +367,31 @@ export function validateBarnDemand(
   barn: Barn,
   totalAllocatedKgToday: number,
   categories: AnimalCategory[] = [],
-  rations: Ration[] = []
+  rations: Ration[] = [],
+  dailyPlan?: DailyOperationPlan
 ): BarnDemandValidationResult {
-  const dailyDemandKg = calculateBarnDailyDemand(barn, categories, rations);
-  const diff = totalAllocatedKgToday - dailyDemandKg;
+  const dailyDemandKg = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+  const diff = Math.round((totalAllocatedKgToday - dailyDemandKg) * 1000) / 1000;
   const percentageFulfilled = dailyDemandKg > 0 ? Math.round((totalAllocatedKgToday / dailyDemandKg) * 100) : 0;
 
   let status: 'exact' | 'under' | 'over' = 'exact';
   let message = 'تم استكمال احتياج العنبر بالكامل';
 
-  if (Math.abs(diff) <= 0.01) {
+  if (Math.abs(diff) <= 0.5) {
     status = 'exact';
-    message = 'تم استكمال احتياج العنبر بالكامل';
+    message = 'تم استكمال احتياج العنبر بالكامل (100%)';
   } else if (diff < 0) {
     status = 'under';
-    message = `متبقي ${Math.abs(diff)} كجم لم يتم توزيعه للعنبر`;
+    message = `متبقي ${Math.abs(diff).toLocaleString()} كجم لم يتم توزيعه للعنبر`;
   } else {
     status = 'over';
-    message = `تحذير: تم تجاوز احتياج العنبر بـ ${diff} كجم`;
+    message = `تحذير: تم تجاوز احتياج العنبر بـ ${diff.toLocaleString()} كجم`;
   }
 
   return {
     dailyDemandKg,
     totalAllocatedKg: totalAllocatedKgToday,
-    differenceKg: Math.round(diff * 100) / 100,
+    differenceKg: diff,
     status,
     message,
     percentageFulfilled,
@@ -295,7 +415,8 @@ export function calculateDailyWarehouseRequirements(
   dailyPlan: DailyOperationPlan,
   categories: AnimalCategory[],
   rations: Ration[],
-  rawMaterials: RawMaterial[]
+  rawMaterials: RawMaterial[],
+  barns: Barn[] = []
 ): DailyWarehouseRequirementItem[] {
   const totalsMap: Record<string, number> = {};
 
@@ -305,8 +426,9 @@ export function calculateDailyWarehouseRequirements(
     // Find category & ration
     const cat = categories.find((c) => c.id === batch.categoryId);
     const ration = rations.find((r) => r.id === cat?.rationId);
-    if (ration && batch.targetWeightKg > 0) {
-      const calculated = calculateBatchIngredients(batch.targetWeightKg, ration, rawMaterials);
+    const effectiveWeight = getBatchDerivedTargetWeightKg(batch, barns, categories, rations, dailyPlan);
+    if (ration && effectiveWeight > 0) {
+      const calculated = calculateBatchIngredients(effectiveWeight, ration, rawMaterials);
       calculated.forEach((item) => {
         totalsMap[item.rawMaterialId] = (totalsMap[item.rawMaterialId] || 0) + item.requiredKg;
       });
@@ -327,3 +449,150 @@ export function calculateDailyWarehouseRequirements(
     };
   }).filter((item) => item.totalRequiredKgToday > 0 || item.pricePerKg);
 }
+
+/**
+ * Calculates raw material requirements based on the total daily demand of all active barns,
+ * ensuring accuracy even if batches haven't been planned yet or to compare with planned batches.
+ */
+export function calculateTheoreticalRawMaterialRequirements(
+  barns: Barn[],
+  categories: AnimalCategory[],
+  rations: Ration[],
+  rawMaterials: RawMaterial[],
+  dailyPlan?: DailyOperationPlan
+): DailyWarehouseRequirementItem[] {
+  const totalsMap: Record<string, number> = {};
+
+  const activeBarns = barns.filter((b) => b.status === 'نشط');
+
+  activeBarns.forEach((barn) => {
+    const demandKg = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+    const ration = getBarnRation(barn, categories, rations, dailyPlan);
+    if (ration && demandKg > 0) {
+      const calculated = calculateBatchIngredients(demandKg, ration, rawMaterials);
+      calculated.forEach((item) => {
+        totalsMap[item.rawMaterialId] = (totalsMap[item.rawMaterialId] || 0) + item.requiredKg;
+      });
+    }
+  });
+
+  return rawMaterials.map((rm) => {
+    const totalRequiredKgToday = Math.round((totalsMap[rm.id] || 0) * 100) / 100;
+    const totalCostToday = Math.round(totalRequiredKgToday * (rm.price || 0) * 100) / 100;
+    return {
+      rawMaterialId: rm.id,
+      code: rm.code,
+      name: rm.name,
+      unit: rm.unit,
+      pricePerKg: rm.price,
+      totalRequiredKgToday,
+      totalCostToday,
+    };
+  }).filter((item) => item.totalRequiredKgToday > 0);
+}
+
+export interface MilkProductionMetrics {
+  totalMilkKg: number;
+  milkingHeadCount: number;
+  averageMilkPerHead: number; // متوسط إنتاج الرأس (كجم)
+  milkingFeedDemandKg: number; // إجمالي علف الحلاب المقرر (كجم)
+  refusalPercent: number; // نسبة الراجع %
+  refusalKg: number; // كمية الراجع (كجم)
+  actualFeedIntakeKg: number; // العلف المأكول الفعلي (كجم)
+  feedEfficiency: number; // معامل التحويل: كجم حليب / كجم علف مأكول
+  feedConversionRatio: number; // كجم علف مأكول / كجم حليب
+  efficiencyStatus: 'ممتازة' | 'جيدة' | 'متوسطة' | 'تحتاج مراجعة' | 'غير محدد';
+}
+
+/**
+ * Calculates milk production KPIs, average per cow, feed refusal, and feed conversion efficiency.
+ */
+export function calculateMilkMetrics(
+  milkData: MilkProductionData | undefined,
+  barns: Barn[],
+  categories: AnimalCategory[],
+  rations: Ration[],
+  dailyPlan?: DailyOperationPlan
+): MilkProductionMetrics {
+  const sessions = milkData?.sessions || [];
+  const totalMilkKg = sessions.reduce((sum, s) => sum + (Number(s.amountKg) || 0), 0);
+  const refusalPercent = Math.max(0, Number(milkData?.refusalPercent) || 0);
+
+  // Identify milking categories/barns (those whose category name includes "حلاب" or "حليب" or "milk" or has lactating tag)
+  const activeBarns = barns.filter((b) => b.status === 'نشط');
+  const milkingBarns = activeBarns.filter((barn) => {
+    const cat = categories.find((c) => c.id === barn.categoryId);
+    const catName = (cat?.name || '').toLowerCase();
+    const barnName = (barn.name || '').toLowerCase();
+    return (
+      catName.includes('حلاب') ||
+      catName.includes('حليب') ||
+      catName.includes('milk') ||
+      barnName.includes('حلاب') ||
+      barnName.includes('حليب')
+    );
+  });
+
+  // Calculate auto-detected milking cows
+  const autoMilkingHeads = (milkingBarns.length > 0 ? milkingBarns : activeBarns).reduce((sum, b) => {
+    const state = getBarnDailyState(b, dailyPlan);
+    return sum + (state.headCount || 0);
+  }, 0);
+
+  const milkingHeadCount = milkData?.milkingHeadCount && milkData.milkingHeadCount > 0
+    ? milkData.milkingHeadCount
+    : autoMilkingHeads;
+
+  // Average milk per cow
+  const averageMilkPerHead = milkingHeadCount > 0
+    ? Math.round((totalMilkKg / milkingHeadCount) * 100) / 100
+    : 0;
+
+  // Milking feed demand
+  const milkingFeedDemandKg = (milkingBarns.length > 0 ? milkingBarns : activeBarns).reduce(
+    (sum, b) => sum + calculateBarnDailyDemand(b, categories, rations, dailyPlan),
+    0
+  );
+
+  // Refusal & Actual Intake
+  const refusalKg = Math.round(((milkingFeedDemandKg * refusalPercent) / 100) * 100) / 100;
+  const actualFeedIntakeKg = Math.max(0, Math.round((milkingFeedDemandKg - refusalKg) * 100) / 100);
+
+  // Feed Efficiency (Milk kg / Feed Intake kg)
+  const feedEfficiency = actualFeedIntakeKg > 0
+    ? Math.round((totalMilkKg / actualFeedIntakeKg) * 1000) / 1000
+    : 0;
+
+  // Feed Conversion Ratio (Feed Intake kg / Milk kg)
+  const feedConversionRatio = totalMilkKg > 0
+    ? Math.round((actualFeedIntakeKg / totalMilkKg) * 1000) / 1000
+    : 0;
+
+  // Status benchmark
+  let efficiencyStatus: MilkProductionMetrics['efficiencyStatus'] = 'غير محدد';
+  if (feedEfficiency > 0) {
+    if (feedEfficiency >= 1.5) {
+      efficiencyStatus = 'ممتازة';
+    } else if (feedEfficiency >= 1.3) {
+      efficiencyStatus = 'جيدة';
+    } else if (feedEfficiency >= 1.1) {
+      efficiencyStatus = 'متوسطة';
+    } else {
+      efficiencyStatus = 'تحتاج مراجعة';
+    }
+  }
+
+  return {
+    totalMilkKg,
+    milkingHeadCount,
+    averageMilkPerHead,
+    milkingFeedDemandKg,
+    refusalPercent,
+    refusalKg,
+    actualFeedIntakeKg,
+    feedEfficiency,
+    feedConversionRatio,
+    efficiencyStatus,
+  };
+}
+

@@ -10,18 +10,18 @@ import {
 } from '../types';
 
 export const initialRawMaterials: RawMaterial[] = [
-  { id: 'rm-1', code: 'RM001', name: 'ذرة صفراء مجروشة', unit: 'كجم', price: 12.5, status: 'نشطة', notes: 'مصدر طاقة رئيسي' },
-  { id: 'rm-2', code: 'RM002', name: 'كسب صويا 46%', unit: 'كجم', price: 24.0, status: 'نشطة', notes: 'بروتين عالي' },
-  { id: 'rm-3', code: 'RM003', name: 'فول صويا كامل الدهن (Full Fat)', unit: 'كجم', price: 26.5, status: 'نشطة', notes: 'طاقة وبروتين' },
-  { id: 'rm-4', code: 'RM004', name: 'DDGS (مقطرات الذرة)', unit: 'كجم', price: 18.0, status: 'نشطة', notes: 'ألياف وبروتين' },
-  { id: 'rm-5', code: 'RM005', name: 'جلوتوفيد', unit: 'كجم', price: 15.0, status: 'نشطة', notes: 'علف طاقة مجفف' },
-  { id: 'rm-6', code: 'RM006', name: 'دريس حجازي ممتاز', unit: 'كجم', price: 9.0, status: 'نشطة', notes: 'ألياف حليبية ممتازة' },
-  { id: 'rm-7', code: 'RM007', name: 'تبن قمح ناعم', unit: 'كجم', price: 4.5, status: 'نشطة', notes: 'ملء كرش وشبع' },
-  { id: 'rm-8', code: 'RM008', name: 'سيلاج ذرة مع الحبوب', unit: 'كجم', price: 3.2, status: 'نشطة', notes: 'مادة خضراء مخمرة' },
-  { id: 'rm-9', code: 'RM009', name: 'مولاس سائب', unit: 'كجم', price: 8.0, status: 'نشطة', notes: 'مستساغ ومصدر طاقة سريع' },
-  { id: 'rm-10', code: 'RM010', name: 'بيكربونات صوديوم (منظم كرش)', unit: 'كجم', price: 22.0, status: 'نشطة', notes: 'منع تحمض الكرش' },
-  { id: 'rm-11', code: 'RM011', name: 'مخلوط أملاح معدنية وفيتامينات', unit: 'كجم', price: 85.0, status: 'نشطة', notes: 'بريمكس متكامل' },
-  { id: 'rm-12', code: 'RM012', name: 'مضاد سموم وإضافات', unit: 'كجم', price: 110.0, status: 'نشطة', notes: 'حماية وإضافات نادرة' },
+  { id: 'rm-1', code: 'RM001', name: 'ذرة صفراء مجروشة', unit: 'كجم', price: 12.5, status: 'نشطة', notes: 'مصدر طاقة رئيسي', currentStockKg: 25000, minStockKg: 5000 },
+  { id: 'rm-2', code: 'RM002', name: 'كسب صويا 46%', unit: 'كجم', price: 24.0, status: 'نشطة', notes: 'بروتين عالي', currentStockKg: 15000, minStockKg: 3000 },
+  { id: 'rm-3', code: 'RM003', name: 'فول صويا كامل الدهن (Full Fat)', unit: 'كجم', price: 26.5, status: 'نشطة', notes: 'طاقة وبروتين', currentStockKg: 8000, minStockKg: 2000 },
+  { id: 'rm-4', code: 'RM004', name: 'DDGS (مقطرات الذرة)', unit: 'كجم', price: 18.0, status: 'نشطة', notes: 'ألياف وبروتين', currentStockKg: 9500, minStockKg: 2000 },
+  { id: 'rm-5', code: 'RM005', name: 'جلوتوفيد', unit: 'كجم', price: 15.0, status: 'نشطة', notes: 'علف طاقة مجفف', currentStockKg: 12000, minStockKg: 2500 },
+  { id: 'rm-6', code: 'RM006', name: 'دريس حجازي ممتاز', unit: 'كجم', price: 9.0, status: 'نشطة', notes: 'ألياف حليبية ممتازة', currentStockKg: 20000, minStockKg: 4000 },
+  { id: 'rm-7', code: 'RM007', name: 'تبن قمح ناعم', unit: 'كجم', price: 4.5, status: 'نشطة', notes: 'ملء كرش وشبع', currentStockKg: 18000, minStockKg: 3000 },
+  { id: 'rm-8', code: 'RM008', name: 'سيلاج ذرة مع الحبوب', unit: 'كجم', price: 3.2, status: 'نشطة', notes: 'مادة خضراء مخمرة', currentStockKg: 85000, minStockKg: 15000 },
+  { id: 'rm-9', code: 'RM009', name: 'مولاس سائب', unit: 'كجم', price: 8.0, status: 'نشطة', notes: 'مستساغ ومصدر طاقة سريع', currentStockKg: 6000, minStockKg: 1500 },
+  { id: 'rm-10', code: 'RM010', name: 'بيكربونات صوديوم (منظم كرش)', unit: 'كجم', price: 22.0, status: 'نشطة', notes: 'منع تحمض الكرش', currentStockKg: 1200, minStockKg: 300 },
+  { id: 'rm-11', code: 'RM011', name: 'مخلوط أملاح معدنية وفيتامينات', unit: 'كجم', price: 85.0, status: 'نشطة', notes: 'بريمكس متكامل', currentStockKg: 850, minStockKg: 200 },
+  { id: 'rm-12', code: 'RM012', name: 'مضاد سموم وإضافات', unit: 'كجم', price: 110.0, status: 'نشطة', notes: 'حماية وإضافات نادرة', currentStockKg: 500, minStockKg: 100 },
 ];
 
 export const initialMixers: Mixer[] = [
@@ -107,6 +107,14 @@ export const initialRations: Ration[] = [
 export const initialDailyPlan: DailyOperationPlan = {
   date: new Date().toISOString().split('T')[0],
   notes: 'خطة التغذية اليومية الشاملة لجميع الفئات والعنابر',
+  milkProduction: {
+    sessions: [
+      { id: 'session-1', name: 'الحلبة الأولى (الصباحية)', amountKg: 4650, time: '05:00 ص' },
+      { id: 'session-2', name: 'الحلبة الثانية (الظهر)', amountKg: 3800, time: '01:00 م' },
+      { id: 'session-3', name: 'الحلبة الثالثة (المسائية)', amountKg: 4150, time: '09:00 م' },
+    ],
+    refusalPercent: 4.5,
+  },
   batches: [
     // لفات فئة الحلاب
     {
@@ -118,8 +126,8 @@ export const initialDailyPlan: DailyOperationPlan = {
       targetWeightKg: 3500,
       status: 'تم التوزيع',
       allocations: [
-        { barnId: 'barn-1', allocatedKg: 2000 },
-        { barnId: 'barn-2', allocatedKg: 1500 },
+        { barnId: 'barn-1', allocatedKg: 2000, allocatedPercent: 58.3686 },
+        { barnId: 'barn-2', allocatedKg: 1500, allocatedPercent: 56.1798 },
       ],
       notes: 'الوجبة الأولى - عنبر 1 وعنبر 2',
     },
@@ -132,9 +140,9 @@ export const initialDailyPlan: DailyOperationPlan = {
       targetWeightKg: 3500,
       status: 'تم التحضير',
       allocations: [
-        { barnId: 'barn-1', allocatedKg: 1426.5 },
-        { barnId: 'barn-2', allocatedKg: 1170 },
-        { barnId: 'barn-3', allocatedKg: 903.5 },
+        { barnId: 'barn-1', allocatedKg: 1426.5, allocatedPercent: 41.6314 },
+        { barnId: 'barn-2', allocatedKg: 1170, allocatedPercent: 43.8202 },
+        { barnId: 'barn-3', allocatedKg: 903.5, allocatedPercent: 38.8581 },
       ],
       notes: 'استكمال عنبر 1 و2 وبداية عنبر 3',
     },
@@ -147,8 +155,8 @@ export const initialDailyPlan: DailyOperationPlan = {
       targetWeightKg: 3500,
       status: 'قيد التحضير',
       allocations: [
-        { barnId: 'barn-3', allocatedKg: 1421.625 },
-        { barnId: 'barn-4', allocatedKg: 2078.375 },
+        { barnId: 'barn-3', allocatedKg: 1421.625, allocatedPercent: 61.1419 },
+        { barnId: 'barn-4', allocatedKg: 2078.375, allocatedPercent: 68.4323 },
       ],
       notes: 'استكمال عنبر 3 وبداية عنبر 4',
     },
@@ -161,8 +169,8 @@ export const initialDailyPlan: DailyOperationPlan = {
       targetWeightKg: 3183.75,
       status: 'مخططة',
       allocations: [
-        { barnId: 'barn-4', allocatedKg: 958.75 },
-        { barnId: 'barn-5', allocatedKg: 2225 },
+        { barnId: 'barn-4', allocatedKg: 958.75, allocatedPercent: 31.5677 },
+        { barnId: 'barn-5', allocatedKg: 2225, allocatedPercent: 100 },
       ],
       notes: 'استكمال عنبر 4 وتغذية عنبر 5 بالكامل',
     },
@@ -177,9 +185,9 @@ export const initialDailyPlan: DailyOperationPlan = {
       targetWeightKg: 2700,
       status: 'تم التحضير',
       allocations: [
-        { barnId: 'barn-6', allocatedKg: 900 },
-        { barnId: 'barn-7', allocatedKg: 787.5 },
-        { barnId: 'barn-8', allocatedKg: 1012.5 },
+        { barnId: 'barn-6', allocatedKg: 900, allocatedPercent: 100 },
+        { barnId: 'barn-7', allocatedKg: 787.5, allocatedPercent: 100 },
+        { barnId: 'barn-8', allocatedKg: 1012.5, allocatedPercent: 100 },
       ],
       notes: 'تغذية كامل عنابر النامي (6، 7، 8)',
     },
@@ -194,9 +202,9 @@ export const initialDailyPlan: DailyOperationPlan = {
       targetWeightKg: 2016,
       status: 'مخططة',
       allocations: [
-        { barnId: 'barn-9', allocatedKg: 630 },
-        { barnId: 'barn-10', allocatedKg: 630 },
-        { barnId: 'barn-11', allocatedKg: 756 },
+        { barnId: 'barn-9', allocatedKg: 630, allocatedPercent: 100 },
+        { barnId: 'barn-10', allocatedKg: 630, allocatedPercent: 100 },
+        { barnId: 'barn-11', allocatedKg: 756, allocatedPercent: 100 },
       ],
       notes: 'تغذية كامل عنابر التسمين (9، 10، 11)',
     },

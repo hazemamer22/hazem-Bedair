@@ -7,7 +7,11 @@ import {
   Ration,
   FarmSettings,
 } from '../../types';
-import { calculateBarnDailyDemand } from '../../utils/calculations';
+import {
+  calculateBarnDailyDemand,
+  getDerivedAllocationKg,
+  getBatchDerivedTargetWeightKg,
+} from '../../utils/calculations';
 import { PrintHeader, PrintSignatures } from '../PrintHeader';
 import { Truck, Printer, Clock, Layers, Home } from 'lucide-react';
 
@@ -117,7 +121,11 @@ export const DriverSheetView: React.FC<DriverSheetViewProps> = ({
             const category = categories.find((c) => c.id === batch.categoryId);
             const mixer = mixers.find((m) => m.id === batch.mixerId);
             const allocations = batch.allocations || [];
-            const totalAllocatedKg = allocations.reduce((s, a) => s + (Number(a.allocatedKg) || 0), 0);
+            const effectiveTargetWeightKg = getBatchDerivedTargetWeightKg(batch, barns, categories, rations, dailyPlan);
+            const totalAllocatedKg = allocations.reduce((s, a) => {
+              const barn = barns.find((b) => b.id === a.barnId);
+              return s + getDerivedAllocationKg(a, barn, categories, rations, dailyPlan);
+            }, 0);
 
             return (
               <div
@@ -135,7 +143,7 @@ export const DriverSheetView: React.FC<DriverSheetViewProps> = ({
                   </div>
                   <div className="flex items-center gap-4 text-xs font-bold">
                     <span>المكسر: {mixer?.name}</span>
-                    <span>وزن اللفة: <strong className="text-emerald-900 text-sm font-black">{batch.targetWeightKg.toLocaleString('ar-EG')} كجم</strong></span>
+                    <span>وزن اللفة: <strong className="text-emerald-900 text-sm font-black">{effectiveTargetWeightKg.toLocaleString('ar-EG')} كجم</strong></span>
                   </div>
                 </div>
 
@@ -169,6 +177,7 @@ export const DriverSheetView: React.FC<DriverSheetViewProps> = ({
                           const barn = barns.find((b) => b.id === alloc.barnId);
                           const barnCategory = categories.find((c) => c.id === barn?.categoryId);
                           const ration = rations.find((r) => r.id === barn?.rationId || r.id === barnCategory?.rationId);
+                          const derivedKg = getDerivedAllocationKg(alloc, barn, categories, rations, dailyPlan);
 
                           return (
                             <tr key={alloc.barnId} className="hover:bg-slate-50 transition-colors">
@@ -217,7 +226,14 @@ export const DriverSheetView: React.FC<DriverSheetViewProps> = ({
                                 </div>
                               </td>
                               <td className="py-3.5 px-3 font-black text-emerald-900 bg-emerald-50/70 text-lg border-l border-slate-300">
-                                {alloc.allocatedKg.toLocaleString()} كجم
+                                <div>
+                                  {derivedKg.toLocaleString()} كجم
+                                  {alloc.allocatedPercent !== undefined && (
+                                    <span className="text-xs font-bold text-emerald-700 mr-1.5 opacity-80">
+                                      ({alloc.allocatedPercent}%)
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="py-3.5 px-3 font-bold text-slate-700 border-l border-slate-300 text-xs">
                                 {batch.time}
@@ -242,9 +258,9 @@ export const DriverSheetView: React.FC<DriverSheetViewProps> = ({
                           {totalAllocatedKg.toLocaleString('ar-EG')} كجم
                         </td>
                         <td colSpan={2} className="py-3 px-3 text-xs text-slate-500 font-bold">
-                          {totalAllocatedKg === batch.targetWeightKg
+                          {Math.abs(totalAllocatedKg - effectiveTargetWeightKg) <= 0.5
                             ? '✓ موزعة بالكامل 100%'
-                            : `متبقي من اللفة: ${batch.targetWeightKg - totalAllocatedKg} كجم`}
+                            : `متبقي من اللفة: ${Math.round((effectiveTargetWeightKg - totalAllocatedKg) * 100) / 100} كجم`}
                         </td>
                       </tr>
                     </tfoot>

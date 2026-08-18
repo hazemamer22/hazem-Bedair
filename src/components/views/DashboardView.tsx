@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   DailyOperationPlan,
   AnimalCategory,
   Barn,
   Mixer,
   Ration,
+  RawMaterial,
   ActiveTab,
 } from '../../types';
 import {
@@ -14,6 +15,7 @@ import {
   calculateBarnTotalAllocatedKgToday,
   validateBatch,
   validateBarnDemand,
+  getBarnDailyState,
 } from '../../utils/calculations';
 import {
   Beef,
@@ -27,31 +29,52 @@ import {
   Layers,
   Truck,
   ClipboardList,
+  ExternalLink,
+  ChevronLeft,
+  Milk,
 } from 'lucide-react';
+import { HerdsBreakdownModal } from '../modals/HerdsBreakdownModal';
+import { DailyRawMaterialsModal } from '../modals/DailyRawMaterialsModal';
+import { MilkProductionSection } from '../MilkProductionSection';
 
 interface DashboardViewProps {
   dailyPlan: DailyOperationPlan;
+  setDailyPlan?: (plan: DailyOperationPlan) => void;
   categories: AnimalCategory[];
   barns: Barn[];
   mixers: Mixer[];
   rations: Ration[];
+  rawMaterials?: RawMaterial[];
   setActiveTab: (tab: ActiveTab) => void;
   onSelectBatchForOrder?: (batchId: string) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   dailyPlan,
+  setDailyPlan,
   categories,
   barns,
   mixers,
   rations,
+  rawMaterials = [],
   setActiveTab,
   onSelectBatchForOrder,
 }) => {
+  // Modal states
+  const [isHerdsModalOpen, setIsHerdsModalOpen] = useState(false);
+  const [isRawMaterialsModalOpen, setIsRawMaterialsModalOpen] = useState(false);
+
   // 1. Overall Metrics
   const activeBarns = barns.filter((b) => b.status === 'نشط');
-  const totalFarmHeads = activeBarns.reduce((sum, b) => sum + (b.headCount || 0), 0);
-  const totalFarmDailyDemandKg = activeBarns.reduce((sum, b) => sum + calculateBarnDailyDemand(b), 0);
+  const totalFarmHeads = activeBarns.reduce((sum, b) => {
+    const bState = getBarnDailyState(b, dailyPlan);
+    return sum + (bState.headCount || 0);
+  }, 0);
+
+  const totalFarmDailyDemandKg = activeBarns.reduce(
+    (sum, b) => sum + calculateBarnDailyDemand(b, categories, rations, dailyPlan),
+    0
+  );
 
   const batches = dailyPlan.batches || [];
   const totalBatchesPlanned = batches.length;
@@ -59,7 +82,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Total allocated to barns across batches
   const totalAllocatedKgToday = activeBarns.reduce(
-    (sum, b) => sum + calculateBarnTotalAllocatedKgToday(b.id, dailyPlan),
+    (sum, b) => sum + calculateBarnTotalAllocatedKgToday(b.id, dailyPlan, barns, categories, rations),
     0
   );
 
@@ -91,11 +114,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const barnValidationAlerts: { barnName: string; message: string; type: 'warning' | 'error' }[] = [];
   activeBarns.forEach((barn) => {
-    const allocated = calculateBarnTotalAllocatedKgToday(barn.id, dailyPlan);
-    const res = validateBarnDemand(barn, allocated);
+    const allocated = calculateBarnTotalAllocatedKgToday(barn.id, dailyPlan, barns, categories, rations);
+    const res = validateBarnDemand(barn, allocated, categories, rations, dailyPlan);
     if (res.status !== 'exact') {
+      const bState = getBarnDailyState(barn, dailyPlan);
       barnValidationAlerts.push({
-        barnName: `${barn.number} (${barn.name || ''})`,
+        barnName: `${bState.displayNumber || barn.number} (${bState.displayName || barn.name || ''})`,
         message: res.message,
         type: res.status === 'over' ? 'error' : 'warning',
       });
@@ -119,67 +143,111 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="space-y-6">
       {/* Top Banner & Quick Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Heads */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-500">إجمالي قطعان المزرعة</p>
-            <h3 className="text-2xl font-black text-slate-900 mt-1">
-              {totalFarmHeads.toLocaleString('ar-EG')} <span className="text-sm font-bold text-slate-500">رأس</span>
-            </h3>
-            <p className="text-xs text-emerald-600 font-medium mt-1">
-              {activeBarns.length} عنابر نشطة بالتغذية
-            </p>
+        {/* Total Heads (Clickable -> Opens Breakdown Modal) */}
+        <button
+          type="button"
+          onClick={() => setIsHerdsModalOpen(true)}
+          className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs hover:border-emerald-500 hover:shadow-md transition-all text-right group cursor-pointer flex flex-col justify-between"
+        >
+          <div className="flex items-start justify-between w-full">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-bold text-slate-500 group-hover:text-emerald-700 transition-colors">
+                  إجمالي قطعان المزرعة
+                </p>
+                <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-emerald-600 transition-colors" />
+              </div>
+              <h3 className="text-2xl font-black text-slate-900 mt-1">
+                {totalFarmHeads.toLocaleString('ar-EG')}{' '}
+                <span className="text-sm font-bold text-slate-500">رأس</span>
+              </h3>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition-all flex items-center justify-center shadow-2xs">
+              <Beef className="w-6 h-6" />
+            </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
-            <Beef className="w-6 h-6" />
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between w-full text-xs">
+            <span className="text-emerald-700 font-black">
+              {activeBarns.length} عنابر نشطة
+            </span>
+            <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-lg group-hover:bg-emerald-100 transition-colors">
+              عرض تفصيل القطعان ↗
+            </span>
           </div>
-        </div>
+        </button>
 
-        {/* Total Daily Feed Required */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-500">الاحتياج اليومي الإجمالي</p>
-            <h3 className="text-2xl font-black text-emerald-700 mt-1">
-              {totalFarmDailyDemandKg.toLocaleString('ar-EG')} <span className="text-sm font-bold text-emerald-900">كجم</span>
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
+        {/* Total Daily Feed Required (Clickable -> Opens Raw Materials Breakdown Modal) */}
+        <button
+          type="button"
+          onClick={() => setIsRawMaterialsModalOpen(true)}
+          className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs hover:border-amber-500 hover:shadow-md transition-all text-right group cursor-pointer flex flex-col justify-between"
+        >
+          <div className="flex items-start justify-between w-full">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-bold text-slate-500 group-hover:text-amber-700 transition-colors">
+                  الاحتياج اليومي الإجمالي
+                </p>
+                <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-amber-600 transition-colors" />
+              </div>
+              <h3 className="text-2xl font-black text-amber-700 mt-1">
+                {totalFarmDailyDemandKg.toLocaleString('ar-EG')}{' '}
+                <span className="text-sm font-bold text-amber-900">كجم</span>
+              </h3>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 group-hover:bg-amber-600 group-hover:text-white transition-all flex items-center justify-center shadow-2xs">
+              <Scale className="w-6 h-6" />
+            </div>
+          </div>
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between w-full text-xs">
+            <span className="text-slate-600 font-bold">
               {(totalFarmDailyDemandKg / 1000).toFixed(2)} طن علف طازج
-            </p>
+            </span>
+            <span className="text-amber-900 font-bold bg-amber-50 px-2 py-0.5 rounded-lg group-hover:bg-amber-100 transition-colors">
+              عرض تفصيل الخامات ↗
+            </span>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
-            <Scale className="w-6 h-6" />
-          </div>
-        </div>
+        </button>
 
         {/* Batches Planned */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-500">لفات المكسر المخططة اليوم</p>
-            <h3 className="text-2xl font-black text-slate-900 mt-1">
-              {totalBatchesPlanned} <span className="text-sm font-bold text-slate-500">لفات</span>
-            </h3>
-            <p className="text-xs text-slate-600 mt-1">
-              إجمالي الوزن = {totalPlannedBatchesKg.toLocaleString('ar-EG')} كجم
-            </p>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">لفات المكسر المخططة اليوم</p>
+              <h3 className="text-2xl font-black text-slate-900 mt-1">
+                {totalBatchesPlanned} <span className="text-sm font-bold text-slate-500">لفات</span>
+              </h3>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center">
+              <Layers className="w-6 h-6" />
+            </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center">
-            <Layers className="w-6 h-6" />
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 font-medium">
+            <span>إجمالي وزن اللفات:</span>
+            <strong className="text-slate-900 font-bold">
+              {totalPlannedBatchesKg.toLocaleString('ar-EG')} كجم
+            </strong>
           </div>
         </div>
 
         {/* Total Allocated & Fulfillment Rate */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-500">نسبة تغذية المزرعة اليوم</p>
-            <h3 className="text-2xl font-black text-emerald-800 mt-1">
-              {overallFulfillmentPercent}%
-            </h3>
-            <p className="text-xs text-slate-600 mt-1">
-              موزع {totalAllocatedKgToday.toLocaleString('ar-EG')} كجم
-            </p>
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold text-slate-500">نسبة تغذية المزرعة اليوم</p>
+              <h3 className="text-2xl font-black text-emerald-800 mt-1">
+                {overallFulfillmentPercent}%
+              </h3>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
+              <TrendingUp className="w-6 h-6" />
+            </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-700 flex items-center justify-center font-bold">
-            <TrendingUp className="w-6 h-6" />
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600 font-medium">
+            <span>الموزع في اللفات:</span>
+            <strong className="text-emerald-800 font-bold">
+              {totalAllocatedKgToday.toLocaleString('ar-EG')} كجم
+            </strong>
           </div>
         </div>
       </div>
@@ -207,6 +275,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* NEW: Milk Production & Feed Efficiency Section */}
+      <MilkProductionSection
+        dailyPlan={dailyPlan}
+        setDailyPlan={setDailyPlan}
+        categories={categories}
+        barns={barns}
+        rations={rations}
+      />
 
       {/* Today's Operational Schedule Table */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden">
@@ -261,7 +338,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 batches.map((batch) => {
                   const category = categories.find((c) => c.id === batch.categoryId);
                   const mixer = mixers.find((m) => m.id === batch.mixerId);
-                  const allocatedKg = calculateBatchAllocatedKg(batch);
+                  const allocatedKg = calculateBatchAllocatedKg(batch, barns, categories, rations, dailyPlan);
                   const val = validateBatch(batch, mixer?.maxCapacityKg);
 
                   return (
@@ -326,12 +403,25 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Animal Categories & Barn Overview Cards */}
       <div>
-        <h3 className="font-bold text-slate-800 text-lg mb-3">حالة تغذية الفئات والعنابر بالمزرعة</h3>
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-slate-800 text-lg">حالة تغذية الفئات والعنابر بالمزرعة</h3>
+          <button
+            onClick={() => setIsHerdsModalOpen(true)}
+            className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200/80 transition-colors"
+          >
+            <span>عرض تفاصيل جميع القطعان</span>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {categories.map((category) => {
             const catBarns = barns.filter((b) => b.categoryId === category.id && b.status === 'نشط');
-            const catTotalHeads = catBarns.reduce((sum, b) => sum + b.headCount, 0);
-            const catDemandKg = calculateCategoryTotalDemand(barns, category.id);
+            const catTotalHeads = catBarns.reduce((sum, b) => {
+              const bState = getBarnDailyState(b, dailyPlan);
+              return sum + (bState.headCount || 0);
+            }, 0);
+            const catDemandKg = calculateCategoryTotalDemand(barns, category.id, categories, rations, dailyPlan);
             const ration = rations.find((r) => r.id === category.rationId);
             const mixer = mixers.find((m) => m.id === category.mixerId);
 
@@ -383,9 +473,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       <span className="text-xs text-slate-400">لا توجد عنابر نشطة</span>
                     ) : (
                       catBarns.map((barn) => {
-                        const demand = calculateBarnDailyDemand(barn);
-                        const allocated = calculateBarnTotalAllocatedKgToday(barn.id, dailyPlan);
-                        const isOk = Math.abs(allocated - demand) <= 0.01;
+                        const bState = getBarnDailyState(barn, dailyPlan);
+                        const demand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+                        const allocated = calculateBarnTotalAllocatedKgToday(barn.id, dailyPlan, barns, categories, rations);
+                        const isOk = Math.abs(allocated - demand) <= 0.5;
                         return (
                           <div
                             key={barn.id}
@@ -397,7 +488,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                                 : 'bg-amber-50 text-amber-900 border-amber-200'
                             }`}
                           >
-                            <span>{barn.number}</span>
+                            <span>{bState.displayNumber || barn.number}</span>
                             <span className="text-[10px] opacity-75">({allocated}/{demand}كجم)</span>
                           </div>
                         );
@@ -410,6 +501,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           })}
         </div>
       </div>
+
+      {/* Modals */}
+      <HerdsBreakdownModal
+        isOpen={isHerdsModalOpen}
+        onClose={() => setIsHerdsModalOpen(false)}
+        categories={categories}
+        barns={barns}
+        rations={rations}
+        mixers={mixers}
+        dailyPlan={dailyPlan}
+      />
+
+      <DailyRawMaterialsModal
+        isOpen={isRawMaterialsModalOpen}
+        onClose={() => setIsRawMaterialsModalOpen(false)}
+        dailyPlan={dailyPlan}
+        categories={categories}
+        barns={barns}
+        rations={rations}
+        rawMaterials={rawMaterials}
+        onNavigateToWarehouse={() => setActiveTab('warehouse')}
+      />
     </div>
   );
 };
+

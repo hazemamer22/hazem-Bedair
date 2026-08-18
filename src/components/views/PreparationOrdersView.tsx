@@ -11,6 +11,7 @@ import {
 import {
   calculateBatchIngredients,
   calculateRationTotalKgPerHead,
+  getBatchDerivedTargetWeightKg,
 } from '../../utils/calculations';
 import { PrintHeader, PrintSignatures } from '../PrintHeader';
 import {
@@ -22,6 +23,7 @@ import {
   Clock,
   Layers,
 } from 'lucide-react';
+import { Barn } from '../../types';
 
 interface PreparationOrdersViewProps {
   dailyPlan: DailyOperationPlan;
@@ -31,6 +33,7 @@ interface PreparationOrdersViewProps {
   rawMaterials: RawMaterial[];
   mixers: Mixer[];
   settings: FarmSettings;
+  barns?: Barn[];
   initialBatchId?: string;
   onPrint?: () => void;
 }
@@ -43,6 +46,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
   rawMaterials,
   mixers,
   settings,
+  barns = [],
   initialBatchId,
   onPrint,
 }) => {
@@ -55,6 +59,9 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
   const category = categories.find((c) => c.id === activeBatch?.categoryId);
   const ration = rations.find((r) => r.id === category?.rationId);
   const mixer = mixers.find((m) => m.id === activeBatch?.mixerId);
+  const effectiveTargetWeightKg = activeBatch
+    ? getBatchDerivedTargetWeightKg(activeBatch, barns, categories, rations, dailyPlan)
+    : 0;
 
   // Local state for actual weights loaded into the mixer
   const [actualWeights, setActualWeights] = useState<Record<string, number>>(() => {
@@ -78,7 +85,12 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
     if (!activeBatch) return;
     const updatedBatches = batches.map((b) =>
       b.id === activeBatch.id
-        ? { ...b, status: 'تم التحضير' as const, actualIngredientWeights: actualWeights }
+        ? {
+            ...b,
+            targetWeightKg: effectiveTargetWeightKg,
+            status: 'تم التحضير' as const,
+            actualIngredientWeights: actualWeights,
+          }
         : b
     );
     setDailyPlan({ ...dailyPlan, batches: updatedBatches });
@@ -87,7 +99,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
 
   const calculatedIngredients = activeBatch && ration
     ? calculateBatchIngredients(
-        activeBatch.targetWeightKg,
+        effectiveTargetWeightKg,
         ration,
         rawMaterials,
         actualWeights
@@ -114,7 +126,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                 rationName: ration?.name,
                 mixerName: mixer?.name,
                 time: activeBatch.time,
-                targetWeightKg: activeBatch.targetWeightKg,
+                targetWeightKg: effectiveTargetWeightKg,
               }
             : undefined
         }

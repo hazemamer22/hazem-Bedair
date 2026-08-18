@@ -7,11 +7,13 @@ import {
   MixBatch,
   BarnAllocation,
   Ration,
+  DailyBarnState,
 } from '../../types';
 import {
   calculateBarnDailyDemand,
   calculateRationTotalKgPerHead,
   getBarnRation,
+  getBarnDailyState,
 } from '../../utils/calculations';
 import {
   Layers,
@@ -21,10 +23,8 @@ import {
   AlertTriangle,
   AlertOctagon,
   Plus,
-  Scale,
   Divide,
   Bot as MixerIcon,
-  Calendar,
   Trash2,
 } from 'lucide-react';
 
@@ -62,7 +62,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     activeCategoryBarns[0]?.id || ''
   );
 
-  // Modal for delete confirmation (avoids iframe confirm() DOMException)
+  // Modal for delete confirmation
   const [batchToDelete, setBatchToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // When category changes, default to first barn in category
@@ -81,97 +81,135 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
   const activeBarn = barns.find((b) => b.id === selectedBarnId);
   const activeCategory = categories.find((c) => c.id === selectedCategoryId);
   const activeMixer = mixers.find((m) => m.id === activeCategory?.mixerId);
-  const activeRation = activeBarn ? getBarnRation(activeBarn, categories, rations) : undefined;
+  const activeRation = activeBarn ? getBarnRation(activeBarn, categories, rations, dailyPlan) : undefined;
   const rationKgPerHead = calculateRationTotalKgPerHead(activeRation);
   const barnDailyDemandKg = activeBarn
-    ? calculateBarnDailyDemand(activeBarn, categories, rations)
+    ? calculateBarnDailyDemand(activeBarn, categories, rations, dailyPlan)
     : 0;
 
-  // Local allocations state for real-time reactivity
-  // Format: batchId -> barnId -> allocatedKg
-  const [allocationsMap, setAllocationsMap] = useState<Record<string, Record<string, number>>>(() => {
+  // Single Source of Truth for allocations: allocationsPercentMap
+  // Format: [batchId]: { [barnId]: allocatedPercent (0-100) }
+  const [allocationsPercentMap, setAllocationsPercentMap] = useState<Record<string, Record<string, number>>>(() => {
     const map: Record<string, Record<string, number>> = {};
     batches.forEach((b) => {
       map[b.id] = {};
       if (b.allocations) {
         b.allocations.forEach((a) => {
-          map[b.id][a.barnId] = Number(a.allocatedKg) || 0;
+          if (a.allocatedPercent !== undefined) {
+            map[b.id][a.barnId] = Number(a.allocatedPercent) || 0;
+          } else {
+            const barnObj = barns.find((bn) => bn.id === a.barnId);
+            const demand = barnObj ? calculateBarnDailyDemand(barnObj, categories, rations, dailyPlan) : 0;
+            map[b.id][a.barnId] = demand > 0 ? (Number(a.allocatedKg) / demand) * 100 : 0;
+          }
         });
       }
     });
     return map;
   });
 
-  // Keep allocationsMap synchronized with dailyPlan.batches when dailyPlan changes
+  // Keep allocationsPercentMap synchronized when dailyPlan.batches or date changes
   useEffect(() => {
     const map: Record<string, Record<string, number>> = {};
     (dailyPlan.batches || []).forEach((b) => {
       map[b.id] = {};
       if (b.allocations) {
         b.allocations.forEach((a) => {
-          map[b.id][a.barnId] = Number(a.allocatedKg) || 0;
+          if (a.allocatedPercent !== undefined) {
+            map[b.id][a.barnId] = Number(a.allocatedPercent) || 0;
+          } else {
+            const barnObj = barns.find((bn) => bn.id === a.barnId);
+            const demand = barnObj ? calculateBarnDailyDemand(barnObj, categories, rations, dailyPlan) : 0;
+            map[b.id][a.barnId] = demand > 0 ? (Number(a.allocatedKg) / demand) * 100 : 0;
+          }
         });
       }
     });
-    setAllocationsMap(map);
-  }, [dailyPlan.batches]);
+    setAllocationsPercentMap(map);
+  }, [dailyPlan.batches, dailyPlan.date]);
+
+  // Derived helper functions
+  const getBarnAllocatedPercent = (batchId: string, barnId: string): number => {
+    return allocationsPercentMap[batchId]?.[barnId] || 0;
+  };
+
+  const getBarnAllocatedKg = (batchId: string, barn: Barn): number => {
+    const demand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+    const percent = getBarnAllocatedPercent(batchId, barn.id);
+    return Math.round(((demand * percent) / 100) * 1000) / 1000;
+  };
+
+  const getBatchTotalWeightKg = (batchId: string): number => {
+    return activeCategoryBarns.reduce((sum, b) => {
+      return sum + getBarnAllocatedKg(batchId, b);
+    }, 0);
+  };
 
   // Handle Percentage Input change for a specific batch & barn
   const handlePercentChange = (batchId: string, barnId: string, percent: number) => {
-    const clampedPercent = Math.max(0, percent);
-    const calculatedKg = Math.round((barnDailyDemandKg * clampedPercent) / 100);
-
-    setAllocationsMap((prev) => ({
+    const clampedPercent = Math.max(0, Math.min(100, isNaN(percent) ? 0 : percent));
+    setAllocationsPercentMap((prev) => ({
       ...prev,
       [batchId]: {
         ...(prev[batchId] || {}),
-        [barnId]: calculatedKg,
+        [barnId]: clampedPercent,
       },
     }));
   };
 
-  // Handle Weight Input change for a specific batch & barn
+  // Handle Weight Input change for a specific batch & barn (converts kg to percent)
   const handleKgChange = (batchId: string, barnId: string, kg: number) => {
-    const clampedKg = Math.max(0, kg);
-    setAllocationsMap((prev) => ({
+    const barnObj = barns.find((b) => b.id === barnId);
+    const demand = barnObj ? calculateBarnDailyDemand(barnObj, categories, rations, dailyPlan) : 0;
+    const safeKg = Math.max(0, isNaN(kg) ? 0 : kg);
+    const calcPercent = demand > 0 ? (safeKg / demand) * 100 : 0;
+    const clampedPercent = Math.max(0, Math.min(100, Math.round(calcPercent * 1000) / 1000));
+
+    setAllocationsPercentMap((prev) => ({
       ...prev,
       [batchId]: {
         ...(prev[batchId] || {}),
-        [barnId]: clampedKg,
+        [barnId]: clampedPercent,
       },
     }));
   };
 
   // Divide remaining percentage equally among batches for this barn
   const handleDistributeRemainingEqually = () => {
-    if (!activeBarn || categoryBatches.length === 0 || barnDailyDemandKg <= 0) return;
+    if (!activeBarn || categoryBatches.length === 0) return;
 
-    // Calculate current total allocated
-    let currentTotalKg = 0;
+    let currentAllocatedPercent = 0;
     categoryBatches.forEach((b) => {
-      currentTotalKg += allocationsMap[b.id]?.[activeBarn.id] || 0;
+      currentAllocatedPercent += allocationsPercentMap[b.id]?.[activeBarn.id] || 0;
     });
 
-    const remainingKg = Math.max(0, barnDailyDemandKg - currentTotalKg);
-    if (remainingKg <= 0) {
-      alert('تم توزيع استحقاق العنبر بالكامل (100%). لا يوجد متبقي.');
+    const remainingPercent = Math.max(0, 100 - currentAllocatedPercent);
+    if (remainingPercent <= 0.001) {
+      alert('استحقاق هذا العنبر موزع بالكامل بالفعل (100%)!');
       return;
     }
 
-    const sharePerBatch = Math.floor(remainingKg / categoryBatches.length);
-    let remainder = remainingKg % categoryBatches.length;
+    const emptyBatches = categoryBatches.filter(
+      (b) => !(allocationsPercentMap[b.id]?.[activeBarn.id] > 0)
+    );
 
-    setAllocationsMap((prev) => {
-      const nextMap = { ...prev };
-      categoryBatches.forEach((b, idx) => {
-        const extra = idx === 0 ? remainder : 0;
-        const currentKg = Number(nextMap[b.id]?.[activeBarn.id]) || 0;
-        nextMap[b.id] = {
-          ...(nextMap[b.id] || {}),
-          [activeBarn.id]: currentKg + sharePerBatch + extra,
+    const targetBatches = emptyBatches.length > 0 ? emptyBatches : categoryBatches;
+    const percentPerBatch = Math.round((remainingPercent / targetBatches.length) * 1000) / 1000;
+
+    setAllocationsPercentMap((prev) => {
+      const next = { ...prev };
+      targetBatches.forEach((b, idx) => {
+        const isLast = idx === targetBatches.length - 1;
+        const valToAdd = isLast
+          ? Math.round((remainingPercent - percentPerBatch * (targetBatches.length - 1)) * 1000) / 1000
+          : percentPerBatch;
+        const currentVal = next[b.id]?.[activeBarn.id] || 0;
+        next[b.id] = {
+          ...(next[b.id] || {}),
+          [activeBarn.id]: Math.round((currentVal + valToAdd) * 1000) / 1000,
         };
       });
-      return nextMap;
+      return next;
     });
   };
 
@@ -202,7 +240,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     if (!batchToDelete) return;
     const batchId = batchToDelete.id;
     const updatedBatches = (dailyPlan.batches || []).filter((b) => b.id !== batchId);
-    setAllocationsMap((prev) => {
+    setAllocationsPercentMap((prev) => {
       const next = { ...prev };
       delete next[batchId];
       return next;
@@ -213,20 +251,56 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
 
   // Direct Barn Editing Handler (Head Count, Feeding Ratio %, Name, Number)
   const handleBarnChange = (barnId: string, updates: Partial<Barn>) => {
-    if (!setBarns) return;
-    const updatedBarns = barns.map((b) => (b.id === barnId ? { ...b, ...updates } : b));
-    setBarns(updatedBarns);
+    if (setBarns) {
+      const updatedBarns = barns.map((b) => (b.id === barnId ? { ...b, ...updates } : b));
+      setBarns(updatedBarns);
+    }
+    const barn = barns.find((b) => b.id === barnId);
+    if (barn) {
+      const currentDailyBarnState = dailyPlan.dailyBarnStates?.[barnId] || {
+        barnId,
+        headCount: barn.headCount,
+        feedingRatioPercent: barn.feedingRatioPercent || 100,
+        rationId: barn.rationId,
+      };
+      setDailyPlan({
+        ...dailyPlan,
+        dailyBarnStates: {
+          ...(dailyPlan.dailyBarnStates || {}),
+          [barnId]: {
+            ...currentDailyBarnState,
+            headCount: updates.headCount !== undefined ? updates.headCount : currentDailyBarnState.headCount,
+            feedingRatioPercent:
+              updates.feedingRatioPercent !== undefined
+                ? updates.feedingRatioPercent
+                : currentDailyBarnState.feedingRatioPercent,
+            rationId: updates.rationId !== undefined ? updates.rationId : currentDailyBarnState.rationId,
+            displayName: updates.name !== undefined ? updates.name : currentDailyBarnState.displayName,
+            displayNumber: updates.number !== undefined ? updates.number : currentDailyBarnState.displayNumber,
+          },
+        },
+      });
+    }
   };
 
   // Save changes to dailyPlan
   const handleSaveAllDistributions = () => {
     const updatedBatches = batches.map((b) => {
-      const bMap = allocationsMap[b.id] || {};
-      const newAllocationsList: BarnAllocation[] = Object.entries(bMap)
-        .filter(([_, kg]) => Number(kg) > 0)
-        .map(([barnId, allocatedKg]) => ({ barnId, allocatedKg: Number(allocatedKg) }));
+      const bPercentMap = allocationsPercentMap[b.id] || {};
+      const newAllocationsList: BarnAllocation[] = Object.entries(bPercentMap)
+        .filter(([_, percent]) => Number(percent) > 0)
+        .map(([barnId, allocatedPercent]) => {
+          const barnObj = barns.find((bn) => bn.id === barnId);
+          const demand = barnObj ? calculateBarnDailyDemand(barnObj, categories, rations, dailyPlan) : 0;
+          const allocatedKg = Math.round(((demand * Number(allocatedPercent)) / 100) * 1000) / 1000;
+          return {
+            barnId,
+            allocatedKg,
+            allocatedPercent: Math.round(Number(allocatedPercent) * 1000) / 1000,
+          };
+        });
 
-      // Automatically recalculate target weight from sum of allocations if configured
+      // Automatically recalculate target weight from sum of allocations
       const totalBatchWeight = newAllocationsList.reduce((s, a) => s + a.allocatedKg, 0);
 
       return {
@@ -241,17 +315,18 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
   };
 
   // Calculations for current selected Barn
-  let currentBarnAllocatedKgSum = 0;
+  let currentBarnAllocatedPercentSum = 0;
   categoryBatches.forEach((b) => {
-    currentBarnAllocatedKgSum += allocationsMap[b.id]?.[selectedBarnId] || 0;
+    currentBarnAllocatedPercentSum += allocationsPercentMap[b.id]?.[selectedBarnId] || 0;
   });
+  currentBarnAllocatedPercentSum = Math.round(currentBarnAllocatedPercentSum * 1000) / 1000;
 
-  const currentBarnAllocatedPercentSum = barnDailyDemandKg > 0
-    ? Math.round((currentBarnAllocatedKgSum / barnDailyDemandKg) * 1000) / 10
-    : 0;
-
-  const currentBarnDiffKg = currentBarnAllocatedKgSum - barnDailyDemandKg;
+  const currentBarnAllocatedKgSum =
+    Math.round(((barnDailyDemandKg * currentBarnAllocatedPercentSum) / 100) * 1000) / 1000;
+  const currentBarnDiffKg = Math.round((currentBarnAllocatedKgSum - barnDailyDemandKg) * 1000) / 1000;
   const currentBarnDiffPercent = Math.round((currentBarnAllocatedPercentSum - 100) * 10) / 10;
+
+  const activeBarnState = activeBarn ? getBarnDailyState(activeBarn, dailyPlan) : undefined;
 
   return (
     <div className="space-y-6">
@@ -264,14 +339,14 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               الشاشة المحورية: توزيع استحقاق العنابر على لفات المكسر
             </h2>
             <p className="text-xs text-slate-500 mt-1 font-medium">
-              ربط استحقاق كل عنبر (كجم) بلفات المكسر مع التزامن اللحظي بين النسب % والأوزان كجم
+              ربط استحقاق كل عنبر (كجم) بلفات المكسر عبر النسب المئوية % مع التحديث التلقائي اللحظي عند تغير الخطة اليومية
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
               onClick={handleSaveAllDistributions}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-700/20 transition-all active:scale-95"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-700/20 transition-all active:scale-95 cursor-pointer"
             >
               <Save className="w-4 h-4 text-amber-300" />
               <span>حفظ جميع التوزيعات</span>
@@ -308,11 +383,14 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               {activeCategoryBarns.length === 0 ? (
                 <option value="">لا توجد عنابر في هذه الفئة</option>
               ) : (
-                activeCategoryBarns.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.number} {b.name ? `(${b.name})` : ''} - {b.headCount} رأس
-                  </option>
-                ))
+                activeCategoryBarns.map((b) => {
+                  const bState = getBarnDailyState(b, dailyPlan);
+                  return (
+                    <option key={b.id} value={b.id}>
+                      {bState.displayNumber || b.number} {bState.displayName ? `(${bState.displayName})` : ''} - {bState.headCount} رأس
+                    </option>
+                  );
+                })
               )}
             </select>
           </div>
@@ -324,7 +402,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               <button
                 type="button"
                 onClick={() => setViewMode('by_barn')}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   viewMode === 'by_barn'
                     ? 'bg-emerald-700 text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -335,7 +413,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               <button
                 type="button"
                 onClick={() => setViewMode('by_batch')}
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                   viewMode === 'by_batch'
                     ? 'bg-emerald-700 text-white shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
@@ -348,8 +426,8 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
         </div>
       </div>
 
-      {/* MODE 1: BY BARN DISTRIBUTION (Primary Core Feature Requirement 12 & 29) */}
-      {viewMode === 'by_barn' && activeBarn && (
+      {/* MODE 1: BY BARN DISTRIBUTION */}
+      {viewMode === 'by_barn' && activeBarn && activeBarnState && (
         <div className="space-y-6">
           {/* Barn Details Summary Header Card */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-4">
@@ -365,7 +443,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                   </h3>
                   <input
                     type="text"
-                    value={activeBarn.number}
+                    value={activeBarnState.displayNumber || activeBarn.number}
                     onChange={(e) => handleBarnChange(activeBarn.id, { number: e.target.value })}
                     className="w-24 font-black text-slate-900 text-sm bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center focus:bg-white focus:outline-emerald-600"
                     title="تعديل رقم العنبر"
@@ -373,7 +451,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                   />
                   <input
                     type="text"
-                    value={activeBarn.name || ''}
+                    value={activeBarnState.displayName || activeBarn.name || ''}
                     onChange={(e) => handleBarnChange(activeBarn.id, { name: e.target.value })}
                     className="w-32 font-bold text-slate-700 text-sm bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 focus:bg-white focus:outline-emerald-600"
                     title="تعديل اسم العنبر"
@@ -385,7 +463,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleDistributeRemainingEqually}
-                  className="px-3.5 py-2 bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all"
+                  className="px-3.5 py-2 bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Divide className="w-4 h-4 text-amber-700" />
                   <span>توزيع المتبقي بالتساوي</span>
@@ -393,7 +471,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
 
                 <button
                   onClick={handleAddNewBatch}
-                  className="px-3.5 py-2 bg-slate-800 text-white hover:bg-slate-900 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all"
+                  className="px-3.5 py-2 bg-slate-800 text-white hover:bg-slate-900 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4 text-amber-300" />
                   <span>إضافة لفة جديدة للمكسر</span>
@@ -409,8 +487,10 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                   <input
                     type="number"
                     min={1}
-                    value={activeBarn.headCount}
-                    onChange={(e) => handleBarnChange(activeBarn.id, { headCount: Math.max(1, Number(e.target.value)) })}
+                    value={activeBarnState.headCount}
+                    onChange={(e) =>
+                      handleBarnChange(activeBarn.id, { headCount: Math.max(1, Number(e.target.value)) })
+                    }
                     className="w-full font-black text-slate-900 text-base bg-white border border-slate-300 rounded-lg px-2 py-1 text-center focus:outline-emerald-600"
                   />
                   <span className="text-xs font-bold text-slate-600 shrink-0">رأس</span>
@@ -430,8 +510,13 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                     type="number"
                     min={10}
                     max={200}
-                    value={activeBarn.feedingRatioPercent || 100}
-                    onChange={(e) => handleBarnChange(activeBarn.id, { feedingRatioPercent: Math.max(1, Number(e.target.value)) })}
+                    step="any"
+                    value={activeBarnState.feedingRatioPercent || 100}
+                    onChange={(e) =>
+                      handleBarnChange(activeBarn.id, {
+                        feedingRatioPercent: Math.max(1, Number(e.target.value)),
+                      })
+                    }
                     className="w-full font-black text-amber-950 text-base bg-white border border-amber-300 rounded-lg px-2 py-1 text-center focus:outline-emerald-600"
                   />
                   <span className="text-xs font-bold text-amber-800 shrink-0">%</span>
@@ -446,7 +531,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               </div>
             </div>
 
-            {/* 100% Distribution Status Alert Banner (Requirement 13) */}
+            {/* 100% Distribution Status Alert Banner */}
             <div
               className={`p-4 rounded-xl border flex items-center justify-between gap-3 text-xs font-bold ${
                 Math.abs(currentBarnDiffKg) <= 1
@@ -491,10 +576,10 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
             <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
               <div>
                 <h4 className="font-extrabold text-slate-800 text-sm">
-                  جدول لفات المكسر المتاحة لفئة ({activeCategory?.name}) لتوزيع استحقاق ({activeBarn.number})
+                  جدول لفات المكسر المتاحة لفئة ({activeCategory?.name}) لتوزيع استحقاق ({activeBarnState.displayNumber || activeBarn.number})
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  إدخال نسبة التوزيع % أو الوزن كجم يقوم بالتحديث الفوري التبادل
+                  النسبة % هي الأساس المحفوظ؛ عند تعديل عدد الرؤوس أو نسبة التغذية يعاد احتساب أوزان الكيلو فورياً
                 </p>
               </div>
 
@@ -511,7 +596,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                     <th className="py-3.5 px-4">توقيت اللفة</th>
                     <th className="py-3.5 px-4 text-center">نسبة التوزيع % من العنبر</th>
                     <th className="py-3.5 px-4 text-center text-emerald-950 bg-emerald-50">
-                      الكمية الموزعة (كجم)
+                      الكمية الموزعة (كجم مشتقة)
                     </th>
                     <th className="py-3.5 px-4 text-center">إجمالي وزن اللفة الناتج</th>
                     <th className="py-3.5 px-4">حالة سعة المكسر ({activeMixer?.maxCapacityKg} كجم)</th>
@@ -527,16 +612,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                     </tr>
                   ) : (
                     categoryBatches.map((batch) => {
-                      const allocatedKg = allocationsMap[batch.id]?.[activeBarn.id] || 0;
-                      const allocatedPercent = barnDailyDemandKg > 0
-                        ? Math.round((allocatedKg / barnDailyDemandKg) * 1000) / 10
-                        : 0;
-
-                      // Calculate batch total weight across ALL barns assigned to this batch (Requirement 17)
-                      const batchTotalWeightKg = (Object.values(allocationsMap[batch.id] || {}) as number[]).reduce(
-                        (sum: number, val: number) => sum + (Number(val) || 0),
-                        0
-                      );
+                      const allocatedPercent = getBarnAllocatedPercent(batch.id, activeBarn.id);
+                      const allocatedKg = getBarnAllocatedKg(batch.id, activeBarn);
+                      const batchTotalWeightKg = getBatchTotalWeightKg(batch.id);
 
                       const mixerMaxCapacity = activeMixer?.maxCapacityKg || 3000;
                       const isOverMixerCapacity = batchTotalWeightKg > mixerMaxCapacity;
@@ -568,7 +646,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                   )
                                 }
                                 placeholder="0"
-                                className="w-16 text-center font-extrabold text-slate-900 focus:outline-emerald-600 text-sm"
+                                className="w-20 text-center font-extrabold text-slate-900 focus:outline-emerald-600 text-sm"
                               />
                               <span className="font-bold text-slate-500 text-xs">%</span>
                             </div>
@@ -583,7 +661,11 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                 min={0}
                                 value={allocatedKg}
                                 onChange={(e) =>
-                                  handleKgChange(batch.id, activeBarn.id, e.target.value === '' ? 0 : parseFloat(e.target.value))
+                                  handleKgChange(
+                                    batch.id,
+                                    activeBarn.id,
+                                    e.target.value === '' ? 0 : parseFloat(e.target.value)
+                                  )
                                 }
                                 placeholder="0"
                                 className="w-28 text-center font-black text-emerald-950 focus:outline-emerald-600 text-base bg-transparent"
@@ -597,7 +679,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                             {batchTotalWeightKg.toLocaleString()} كجم
                           </td>
 
-                          {/* Mixer Capacity Check & Warning (Requirement 17) */}
+                          {/* Mixer Capacity Check & Warning */}
                           <td className="py-4 px-4 text-xs">
                             {isOverMixerCapacity ? (
                               <div className="p-2 bg-rose-50 text-rose-900 rounded-lg border border-rose-200 font-bold">
@@ -616,7 +698,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleDeleteBatch(batch.id, batch.batchNumber)}
-                              className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold transition-all active:scale-95 border border-rose-200"
+                              className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold transition-all active:scale-95 border border-rose-200 cursor-pointer"
                               title="حذف اللفة"
                             >
                               <Trash2 className="w-4 h-4" />
@@ -658,8 +740,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
 
             <div className="space-y-6">
               {categoryBatches.map((batch) => {
-                const bMap = allocationsMap[batch.id] || {};
-                const totalBatchKg = (Object.values(bMap) as number[]).reduce((s: number, v: number) => s + (Number(v) || 0), 0);
+                const totalBatchKg = getBatchTotalWeightKg(batch.id);
                 const mixerMax = activeMixer?.maxCapacityKg || 3000;
                 const isOver = totalBatchKg > mixerMax;
 
@@ -684,7 +765,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                         <button
                           type="button"
                           onClick={() => handleDeleteBatch(batch.id, batch.batchNumber)}
-                          className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold transition-all active:scale-95 border border-rose-200 flex items-center gap-1 text-xs shrink-0"
+                          className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold transition-all active:scale-95 border border-rose-200 flex items-center gap-1 text-xs shrink-0 cursor-pointer"
                           title="حذف اللفة"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -696,14 +777,21 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                     {/* Barns Inputs inside this batch */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                       {activeCategoryBarns.map((barn) => {
-                        const bDemand = calculateBarnDailyDemand(barn, categories, rations);
-                        const currKg = bMap[barn.id] || 0;
+                        const bDemand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+                        const bState = getBarnDailyState(barn, dailyPlan);
+                        const currPercent = getBarnAllocatedPercent(batch.id, barn.id);
+                        const currKg = getBarnAllocatedKg(batch.id, barn);
 
                         return (
                           <div key={barn.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
                             <div className="flex items-center justify-between text-xs font-black text-slate-900">
-                              <span>{barn.number} {barn.name && `(${barn.name})`}</span>
-                              <span className="text-emerald-900 font-extrabold">{bDemand.toLocaleString()}كجم/يوم</span>
+                              <span>
+                                {bState.displayNumber || barn.number}{' '}
+                                {bState.displayName && `(${bState.displayName})`}
+                              </span>
+                              <span className="text-emerald-900 font-extrabold">
+                                {bDemand.toLocaleString()} كجم/يوم
+                              </span>
                             </div>
 
                             {/* Quick Barn Head Count & Feeding Ratio Control */}
@@ -713,8 +801,10 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                 <input
                                   type="number"
                                   min={1}
-                                  value={barn.headCount}
-                                  onChange={(e) => handleBarnChange(barn.id, { headCount: Math.max(1, Number(e.target.value)) })}
+                                  value={bState.headCount}
+                                  onChange={(e) =>
+                                    handleBarnChange(barn.id, { headCount: Math.max(1, Number(e.target.value)) })
+                                  }
                                   className="w-12 text-center font-bold bg-slate-50 border border-slate-300 rounded px-1 py-0.5 text-slate-900 text-xs focus:bg-white focus:outline-emerald-600"
                                   title="تعديل عدد الرؤوس"
                                 />
@@ -725,27 +815,59 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                   type="number"
                                   min={10}
                                   max={200}
-                                  value={barn.feedingRatioPercent || 100}
-                                  onChange={(e) => handleBarnChange(barn.id, { feedingRatioPercent: Math.max(1, Number(e.target.value)) })}
+                                  step="any"
+                                  value={bState.feedingRatioPercent || 100}
+                                  onChange={(e) =>
+                                    handleBarnChange(barn.id, {
+                                      feedingRatioPercent: Math.max(1, Number(e.target.value)),
+                                    })
+                                  }
                                   className="w-12 text-center font-bold bg-amber-50 border border-amber-300 rounded px-1 py-0.5 text-amber-950 text-xs focus:bg-white focus:outline-emerald-600"
                                   title="تعديل نسبة التغذية %"
                                 />
                               </div>
                             </div>
 
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="number"
-                                step="any"
-                                min={0}
-                                value={currKg}
-                                onChange={(e) =>
-                                  handleKgChange(batch.id, barn.id, e.target.value === '' ? 0 : parseFloat(e.target.value))
-                                }
-                                placeholder="0"
-                                className="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-black text-emerald-950 text-sm text-center focus:outline-emerald-600"
-                              />
-                              <span className="text-xs font-bold text-slate-500">كجم</span>
+                            {/* Linked Percent and KG Inputs */}
+                            <div className="grid grid-cols-2 gap-1.5 items-center">
+                              <div className="flex items-center gap-1 bg-white border border-slate-300 rounded-lg px-2 py-1">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min={0}
+                                  max={100}
+                                  value={currPercent}
+                                  onChange={(e) =>
+                                    handlePercentChange(
+                                      batch.id,
+                                      barn.id,
+                                      e.target.value === '' ? 0 : parseFloat(e.target.value)
+                                    )
+                                  }
+                                  placeholder="0"
+                                  className="w-full text-center font-bold text-slate-900 text-xs focus:outline-none"
+                                />
+                                <span className="text-[10px] font-bold text-slate-500">%</span>
+                              </div>
+
+                              <div className="flex items-center gap-1 bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1">
+                                <input
+                                  type="number"
+                                  step="any"
+                                  min={0}
+                                  value={currKg}
+                                  onChange={(e) =>
+                                    handleKgChange(
+                                      batch.id,
+                                      barn.id,
+                                      e.target.value === '' ? 0 : parseFloat(e.target.value)
+                                    )
+                                  }
+                                  placeholder="0"
+                                  className="w-full text-center font-black text-emerald-950 text-xs bg-transparent focus:outline-none"
+                                />
+                                <span className="text-[10px] font-bold text-emerald-800">كجم</span>
+                              </div>
                             </div>
                           </div>
                         );
@@ -774,21 +896,21 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
             </div>
 
             <p className="text-sm font-semibold text-slate-700 leading-relaxed">
-              هل أنت تأكد من حذف <span className="font-black text-slate-900">{batchToDelete.name}</span>؟ سيتم إلغاء التوزيع الخاص بهذه اللفة من جميع العنابر.
+              هل أنت متأكد من حذف <span className="font-black text-slate-900">{batchToDelete.name}</span>؟ سيتم إلغاء التوزيع الخاص بهذه اللفة من جميع العنابر.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={() => setBatchToDelete(null)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all"
+                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
               >
                 إلغاء
               </button>
               <button
                 type="button"
                 onClick={confirmDeleteBatch}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-md shadow-rose-600/20 transition-all active:scale-95"
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs shadow-md shadow-rose-600/20 transition-all active:scale-95 cursor-pointer"
               >
                 نعم، احذف اللفة
               </button>

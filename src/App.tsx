@@ -182,10 +182,12 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <DashboardView
               dailyPlan={dailyPlan}
+              setDailyPlan={updateDailyPlan}
               categories={categories}
               barns={barns}
               mixers={mixers}
               rations={rations}
+              rawMaterials={rawMaterials}
               setActiveTab={setActiveTab}
               onSelectBatchForOrder={(bId) => setSelectedBatchForOrder(bId)}
             />
@@ -225,6 +227,7 @@ export default function App() {
               rawMaterials={rawMaterials}
               mixers={mixers}
               settings={settings}
+              barns={barns}
               initialBatchId={selectedBatchForOrder}
             />
           )}
@@ -247,7 +250,9 @@ export default function App() {
               categories={categories}
               rations={rations}
               rawMaterials={rawMaterials}
+              setRawMaterials={updateRawMaterials}
               settings={settings}
+              barns={barns}
             />
           )}
 

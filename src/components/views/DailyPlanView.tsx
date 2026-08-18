@@ -13,6 +13,7 @@ import {
   calculateRationTotalKgPerHead,
   calculateBarnDailyDemand,
   getBarnRation,
+  getBarnDailyState,
 } from '../../utils/calculations';
 import {
   Plus,
@@ -74,17 +75,130 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
 
   // Update feeding ratio inline in the table
   const handleFeedingRatioChange = (barnId: string, newRatio: number) => {
-    if (!setBarns) return;
-    const clampedRatio = Math.max(1, Math.min(200, newRatio || 100));
-    const updated = barns.map((b) => (b.id === barnId ? { ...b, feedingRatioPercent: clampedRatio } : b));
-    setBarns(updated);
+    const clampedRatio = Math.max(1, Math.min(200, isNaN(newRatio) ? 100 : newRatio));
+    const updatedBarns = barns.map((b) => (b.id === barnId ? { ...b, feedingRatioPercent: clampedRatio } : b));
+    if (setBarns) {
+      setBarns(updatedBarns);
+    }
+
+    const currentBarn = barns.find((b) => b.id === barnId);
+    const prevDailyBarnState = dailyPlan.dailyBarnStates?.[barnId] || {
+      barnId,
+      headCount: currentBarn?.headCount || 0,
+      feedingRatioPercent: currentBarn?.feedingRatioPercent || 100,
+      rationId: currentBarn?.rationId,
+    };
+
+    const nextDailyPlan: DailyOperationPlan = {
+      ...dailyPlan,
+      dailyBarnStates: {
+        ...(dailyPlan.dailyBarnStates || {}),
+        [barnId]: {
+          ...prevDailyBarnState,
+          feedingRatioPercent: clampedRatio,
+        },
+      },
+    };
+
+    // Recalculate batch allocatedKg for allocations with allocatedPercent
+    const updatedBatches = (dailyPlan.batches || []).map((b) => {
+      if (!b.allocations || b.allocations.length === 0) return b;
+      let changed = false;
+      const newAllocs = b.allocations.map((a) => {
+        if (a.allocatedPercent !== undefined) {
+          const barnObj = updatedBarns.find((bn) => bn.id === a.barnId);
+          const demand = barnObj ? calculateBarnDailyDemand(barnObj, categories, rations, nextDailyPlan) : 0;
+          const newAllocatedKg = Math.round(((demand * a.allocatedPercent) / 100) * 1000) / 1000;
+          if (newAllocatedKg !== a.allocatedKg) {
+            changed = true;
+          }
+          return { ...a, allocatedKg: newAllocatedKg };
+        }
+        return a;
+      });
+
+      if (changed) {
+        const totalWeight = newAllocs.reduce((s, a) => s + a.allocatedKg, 0);
+        return {
+          ...b,
+          allocations: newAllocs,
+          targetWeightKg: totalWeight > 0 ? totalWeight : b.targetWeightKg,
+        };
+      }
+      return b;
+    });
+
+    setDailyPlan({
+      ...nextDailyPlan,
+      batches: updatedBatches,
+    });
   };
 
   // Generic barn direct update handler
   const handleBarnUpdate = (barnId: string, updates: Partial<Barn>) => {
-    if (!setBarns) return;
-    const updated = barns.map((b) => (b.id === barnId ? { ...b, ...updates } : b));
-    setBarns(updated);
+    const updatedBarns = barns.map((b) => (b.id === barnId ? { ...b, ...updates } : b));
+    if (setBarns) {
+      setBarns(updatedBarns);
+    }
+
+    const currentBarn = barns.find((b) => b.id === barnId);
+    const prevDailyBarnState = dailyPlan.dailyBarnStates?.[barnId] || {
+      barnId,
+      headCount: currentBarn?.headCount || 0,
+      feedingRatioPercent: currentBarn?.feedingRatioPercent || 100,
+      rationId: currentBarn?.rationId,
+    };
+
+    const nextDailyPlan: DailyOperationPlan = {
+      ...dailyPlan,
+      dailyBarnStates: {
+        ...(dailyPlan.dailyBarnStates || {}),
+        [barnId]: {
+          ...prevDailyBarnState,
+          headCount: updates.headCount !== undefined ? updates.headCount : prevDailyBarnState.headCount,
+          feedingRatioPercent:
+            updates.feedingRatioPercent !== undefined
+              ? updates.feedingRatioPercent
+              : prevDailyBarnState.feedingRatioPercent,
+          rationId: updates.rationId !== undefined ? updates.rationId : prevDailyBarnState.rationId,
+          displayName: updates.name !== undefined ? updates.name : prevDailyBarnState.displayName,
+          displayNumber: updates.number !== undefined ? updates.number : prevDailyBarnState.displayNumber,
+        },
+      },
+    };
+
+    // Recalculate batch allocatedKg for allocations with allocatedPercent
+    const updatedBatches = (dailyPlan.batches || []).map((b) => {
+      if (!b.allocations || b.allocations.length === 0) return b;
+      let changed = false;
+      const newAllocs = b.allocations.map((a) => {
+        if (a.allocatedPercent !== undefined) {
+          const barnObj = updatedBarns.find((bn) => bn.id === a.barnId);
+          const demand = barnObj ? calculateBarnDailyDemand(barnObj, categories, rations, nextDailyPlan) : 0;
+          const newAllocatedKg = Math.round(((demand * a.allocatedPercent) / 100) * 1000) / 1000;
+          if (newAllocatedKg !== a.allocatedKg) {
+            changed = true;
+          }
+          return { ...a, allocatedKg: newAllocatedKg };
+        }
+        return a;
+      });
+
+      if (changed) {
+        const totalWeight = newAllocs.reduce((s, a) => s + a.allocatedKg, 0);
+        return {
+          ...b,
+          allocations: newAllocs,
+          targetWeightKg: totalWeight > 0 ? totalWeight : b.targetWeightKg,
+        };
+      }
+      return b;
+    });
+
+    setDailyPlan({
+      ...nextDailyPlan,
+      batches: updatedBatches,
+    });
   };
 
   // Batch modal handlers
@@ -177,9 +291,12 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
   });
 
   // Calculate totals
-  const totalHeads = filteredBarns.reduce((sum, b) => sum + (b.headCount || 0), 0);
+  const totalHeads = filteredBarns.reduce((sum, b) => {
+    const bState = getBarnDailyState(b, dailyPlan);
+    return sum + (bState.headCount || 0);
+  }, 0);
   const totalDailyDemandKg = filteredBarns.reduce(
-    (sum, b) => sum + calculateBarnDailyDemand(b, categories, rations),
+    (sum, b) => sum + calculateBarnDailyDemand(b, categories, rations, dailyPlan),
     0
   );
 
@@ -304,10 +421,11 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                     </tr>
                   ) : (
                     filteredBarns.map((barn) => {
+                      const barnState = getBarnDailyState(barn, dailyPlan);
                       const category = categories.find((c) => c.id === barn.categoryId);
-                      const ration = getBarnRation(barn, categories, rations);
+                      const ration = getBarnRation(barn, categories, rations, dailyPlan);
                       const totalRationKgPerHead = calculateRationTotalKgPerHead(ration);
-                      const barnDemandKg = calculateBarnDailyDemand(barn, categories, rations);
+                      const barnDemandKg = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
 
                       return (
                         <tr key={barn.id} className="hover:bg-slate-50/80 transition-colors">
@@ -315,7 +433,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                             <div className="flex flex-col gap-1">
                               <input
                                 type="text"
-                                value={barn.number}
+                                value={barnState.displayNumber || barn.number}
                                 onChange={(e) => handleBarnUpdate(barn.id, { number: e.target.value })}
                                 className="w-28 font-black text-slate-900 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-xs focus:bg-white focus:outline-emerald-600"
                                 placeholder="رقم العنبر"
@@ -323,7 +441,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                               />
                               <input
                                 type="text"
-                                value={barn.name || ''}
+                                value={barnState.displayName || barn.name || ''}
                                 onChange={(e) => handleBarnUpdate(barn.id, { name: e.target.value })}
                                 className="w-32 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 focus:bg-white focus:outline-emerald-600"
                                 placeholder="اسم العنبر (اختياري)"
@@ -344,7 +462,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                               <input
                                 type="number"
                                 min={1}
-                                value={barn.headCount}
+                                value={barnState.headCount}
                                 onChange={(e) => handleBarnUpdate(barn.id, { headCount: Math.max(1, Number(e.target.value)) })}
                                 className="w-16 text-center font-black text-emerald-950 bg-transparent focus:outline-none text-sm"
                                 title="تعديل عدد الرؤوس"
@@ -362,7 +480,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                                 min={10}
                                 max={200}
                                 step="any"
-                                value={barn.feedingRatioPercent || 100}
+                                value={barnState.feedingRatioPercent || 100}
                                 onChange={(e) => handleFeedingRatioChange(barn.id, Number(e.target.value))}
                                 className="w-16 text-center font-extrabold text-amber-900 bg-transparent focus:outline-none text-sm"
                               />
@@ -405,7 +523,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
                 if (catBarns.length === 0) return null;
 
                 const ration = rations.find((r) => r.id === cat.rationId);
-                const totalDemandCat = calculateCategoryTotalDemand(catBarns, cat.id, categories, rations);
+                const totalDemandCat = calculateCategoryTotalDemand(catBarns, cat.id, categories, rations, dailyPlan);
                 const totalRationKg = calculateRationTotalKgPerHead(ration);
 
                 return (
@@ -484,7 +602,7 @@ export const DailyPlanView: React.FC<DailyPlanViewProps> = ({
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {categories.map((cat) => {
-                const demandKg = calculateCategoryTotalDemand(barns, cat.id, categories, rations);
+                const demandKg = calculateCategoryTotalDemand(barns, cat.id, categories, rations, dailyPlan);
                 const catBatches = batches.filter((b) => b.categoryId === cat.id);
                 const plannedKg = catBatches.reduce((sum, b) => sum + b.targetWeightKg, 0);
                 const diffKg = plannedKg - demandKg;
