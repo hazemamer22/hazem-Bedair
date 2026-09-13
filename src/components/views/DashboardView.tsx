@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   DailyOperationPlan,
   AnimalCategory,
@@ -16,7 +16,10 @@ import {
   validateBatch,
   validateBarnDemand,
   getBarnDailyState,
+  getBatchDerivedTargetWeightKg,
+  doesBatchBelongToCategory,
 } from '../../utils/calculations';
+import { sanitizeBatches, saveDailyPlan } from '../../services/storage';
 import {
   Beef,
   Scale,
@@ -32,6 +35,8 @@ import {
   ExternalLink,
   ChevronLeft,
   Milk,
+  RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 import { HerdsBreakdownModal } from '../modals/HerdsBreakdownModal';
 import { DailyRawMaterialsModal } from '../modals/DailyRawMaterialsModal';
@@ -76,7 +81,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     0
   );
 
+  // batches from dailyPlan
   const batches = dailyPlan.batches || [];
+
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  const handleManualSyncBatches = () => {
+    const { batches: cleaned } = sanitizeBatches(dailyPlan.batches || [], barns, categories, rations, dailyPlan);
+    if (setDailyPlan) {
+      const updated = { ...dailyPlan, batches: cleaned };
+      setDailyPlan(updated);
+      saveDailyPlan(updated);
+    }
+    setSyncFeedback(`تم ضبط وتطهير جدول اللفات بنجاح: تم اعتماد ${cleaned.length} لفات ومزامنتها مع احتياج العنابر الفعلي وحذف أي تكرار!`);
+    setTimeout(() => setSyncFeedback(null), 6000);
+  };
+
   const totalBatchesPlanned = batches.length;
   const totalPlannedBatchesKg = batches.reduce((sum, b) => sum + (b.targetWeightKg || 0), 0);
 
@@ -283,6 +303,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         categories={categories}
         barns={barns}
         rations={rations}
+        rawMaterials={rawMaterials}
       />
 
       {/* Today's Operational Schedule Table */}
@@ -299,6 +320,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <button
+              type="button"
+              onClick={handleManualSyncBatches}
+              className="px-3.5 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="إزالة التكرار وضبط أوزان التسمين والنامي لتصبح 9 لفات معتمدة"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-700" />
+              <span>مزامنة وتطهير اللفات (9 لفات)</span>
+            </button>
+            <button
               onClick={() => setActiveTab('daily_plan')}
               className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs"
             >
@@ -312,6 +342,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
         </div>
+
+        {syncFeedback && (
+          <div className="mx-5 my-3 p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-xs font-bold text-emerald-900 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{syncFeedback}</span>
+          </div>
+        )}
 
         <div className="overflow-x-auto">
           <table className="w-full text-right text-sm">
@@ -336,10 +373,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </tr>
               ) : (
                 batches.map((batch) => {
-                  const category = categories.find((c) => c.id === batch.categoryId);
+                  const category = categories.find((c) => c.id === batch.categoryId) || categories.find((c) => doesBatchBelongToCategory(batch, c, barns));
                   const mixer = mixers.find((m) => m.id === batch.mixerId);
                   const allocatedKg = calculateBatchAllocatedKg(batch, barns, categories, rations, dailyPlan);
-                  const val = validateBatch(batch, mixer?.maxCapacityKg);
+                  const effWeight = getBatchDerivedTargetWeightKg(batch, barns, categories, rations, dailyPlan);
+                  const targetWeightKg = effWeight > 0 ? effWeight : (batch.targetWeightKg || 0);
+                  const val = validateBatch(batch, mixer?.maxCapacityKg, barns, categories, rations, dailyPlan);
 
                   return (
                     <tr key={batch.id} className="hover:bg-slate-50/80 transition-colors">
@@ -352,12 +391,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       </td>
                       <td className="py-3.5 px-4 text-slate-600 text-xs">{mixer?.name || 'مكسر'}</td>
                       <td className="py-3.5 px-4 font-extrabold text-slate-900">
-                        {batch.targetWeightKg.toLocaleString('ar-EG')} كجم
+                        {targetWeightKg.toLocaleString('ar-EG')} كجم
                       </td>
                       <td className="py-3.5 px-4">
                         <div className="flex flex-col gap-0.5">
                           <div className="text-xs font-bold text-slate-800">
-                            موزع: {allocatedKg.toLocaleString('ar-EG')} / {batch.targetWeightKg.toLocaleString('ar-EG')} كجم
+                            موزع: {allocatedKg.toLocaleString('ar-EG')} / {targetWeightKg.toLocaleString('ar-EG')} كجم
                           </div>
                           {val.status === 'exact' ? (
                             <span className="text-[11px] text-emerald-600 font-bold">✓ تم التوزيع بالكامل</span>

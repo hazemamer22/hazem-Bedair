@@ -13,6 +13,8 @@ import {
   getBatchDerivedTargetWeightKg,
 } from '../../utils/calculations';
 import { PrintHeader, PrintSignatures } from '../PrintHeader';
+import { ExportExcelButton } from '../ExportExcelButton';
+import { exportDriverSheetToExcel } from '../../utils/excelExport';
 import { Truck, Printer, Clock, Layers, Home } from 'lucide-react';
 
 interface DriverSheetViewProps {
@@ -36,12 +38,19 @@ export const DriverSheetView: React.FC<DriverSheetViewProps> = ({
   settings,
   onPrint,
 }) => {
-  const batches = dailyPlan.batches || [];
+  // Sort batches by category order so department batches stay next to each other
+  const sortedBatches = [...(dailyPlan.batches || [])].sort((a, b) => {
+    const catIndexA = categories.findIndex((c) => c.id === a.categoryId);
+    const catIndexB = categories.findIndex((c) => c.id === b.categoryId);
+    if (catIndexA !== catIndexB) return catIndexA - catIndexB;
+    return a.batchNumber.localeCompare(b.batchNumber, 'ar');
+  });
+
   const [selectedBatchFilter, setSelectedBatchFilter] = useState<string>('ALL');
 
   const filteredBatches = selectedBatchFilter === 'ALL'
-    ? batches
-    : batches.filter((b) => b.id === selectedBatchFilter);
+    ? sortedBatches
+    : sortedBatches.filter((b) => b.id === selectedBatchFilter);
 
   const handleBarnUpdate = (barnId: string, updates: Partial<Barn>) => {
     if (!setBarns) return;
@@ -72,41 +81,86 @@ export const DriverSheetView: React.FC<DriverSheetViewProps> = ({
             </p>
           </div>
 
-          <button
-            onClick={() => onPrint?.() || window.print()}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95 self-start sm:self-auto"
-          >
-            <Printer className="w-4 h-4 text-amber-400" />
-            <span>طباعة كشف السائق ورقيًا</span>
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            <button
+              onClick={() => onPrint?.() || window.print()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95"
+            >
+              <Printer className="w-4 h-4 text-amber-400" />
+              <span>طباعة كشف السائق ورقيًا</span>
+            </button>
+            <ExportExcelButton
+              onExport={() =>
+                exportDriverSheetToExcel(dailyPlan, mixers, barns, categories, rations)
+              }
+              label="تصدير كشف السائق للإكسيل"
+              variant="secondary"
+              size="sm"
+            />
+          </div>
         </div>
 
-        {/* Batch Filter Buttons */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          <span className="text-xs font-bold text-slate-500 shrink-0">عرض اللفة:</span>
-          <button
-            onClick={() => setSelectedBatchFilter('ALL')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-              selectedBatchFilter === 'ALL'
-                ? 'bg-emerald-900 text-white border-emerald-950'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            جميع اللفات ({batches.length})
-          </button>
-          {batches.map((b) => (
+        {/* Batch Filter Buttons Grouped by Department */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700">تصفية العرض والطباعة حسب اللفات والأقسام:</span>
             <button
-              key={b.id}
-              onClick={() => setSelectedBatchFilter(b.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                selectedBatchFilter === b.id
-                  ? 'bg-emerald-900 text-white border-emerald-950'
-                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+              type="button"
+              onClick={() => setSelectedBatchFilter('ALL')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                selectedBatchFilter === 'ALL'
+                  ? 'bg-emerald-900 text-white border-emerald-950 shadow-xs ring-2 ring-emerald-500/30'
+                  : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
               }`}
             >
-              {b.batchNumber} ({b.time})
+              جميع الأقسام واللفات ({sortedBatches.length})
             </button>
-          ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {categories
+              .filter((cat) => sortedBatches.some((b) => b.categoryId === cat.id))
+              .map((cat) => {
+                const catBatches = sortedBatches.filter((b) => b.categoryId === cat.id);
+                return (
+                  <div
+                    key={cat.id}
+                    className="p-3 bg-slate-50/90 rounded-xl border border-slate-200 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-emerald-900 bg-emerald-100 px-2.5 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1">
+                        <Layers className="w-3 h-3 text-emerald-800" />
+                        <span>قسم {cat.name}</span>
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-500">
+                        ({catBatches.length} لفات)
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {catBatches.map((b) => {
+                        const isSelected = selectedBatchFilter === b.id;
+                        return (
+                          <button
+                            key={b.id}
+                            type="button"
+                            onClick={() => setSelectedBatchFilter(b.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer flex items-center gap-1.5 ${
+                              isSelected
+                                ? 'bg-emerald-900 text-white border-emerald-950 shadow-xs ring-2 ring-emerald-500/30'
+                                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span>{b.batchNumber}</span>
+                            <span className="text-[11px] opacity-80">({b.time})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
         </div>
       </div>
 
@@ -180,7 +234,7 @@ export const DriverSheetView: React.FC<DriverSheetViewProps> = ({
                           const derivedKg = getDerivedAllocationKg(alloc, barn, categories, rations, dailyPlan);
 
                           return (
-                            <tr key={alloc.barnId} className="hover:bg-slate-50 transition-colors">
+                            <tr key={`${batch.id}-${alloc.barnId || 'barn'}-${idx}`} className="hover:bg-slate-50 transition-colors">
                               <td className="py-3.5 px-3 text-center font-bold text-slate-400 border-l border-slate-300">
                                 {idx + 1}
                               </td>

@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { RawMaterial, RawMaterialStatus, Ration } from '../../types';
+import { ExportExcelButton } from '../ExportExcelButton';
+import { exportRawMaterialsToExcel } from '../../utils/excelExport';
+import { generateId } from '../../utils/idGenerator';
+import { useFeedback } from '../../context/FeedbackContext';
 import { Wheat, Plus, Edit, Trash2, Power, Search } from 'lucide-react';
 
 interface RawMaterialsViewProps {
@@ -13,6 +17,7 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
   setRawMaterials,
   rations = [],
 }) => {
+  const { showToast, showConfirm } = useFeedback();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<RawMaterial | null>(null);
@@ -22,6 +27,7 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
   const [name, setName] = useState('');
   const [unit, setUnit] = useState('كجم');
   const [price, setPrice] = useState<number | undefined>(undefined);
+  const [dryMatterPercent, setDryMatterPercent] = useState<number | undefined>(undefined);
   const [status, setStatus] = useState<RawMaterialStatus>('نشطة');
   const [notes, setNotes] = useState('');
 
@@ -37,6 +43,7 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
     setName('');
     setUnit('كجم');
     setPrice(undefined);
+    setDryMatterPercent(88);
     setStatus('نشطة');
     setNotes('');
     setIsModalOpen(true);
@@ -48,6 +55,7 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
     setName(item.name);
     setUnit(item.unit);
     setPrice(item.price);
+    setDryMatterPercent(item.dryMatterPercent);
     setStatus(item.status);
     setNotes(item.notes || '');
     setIsModalOpen(true);
@@ -70,40 +78,54 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
 
     if (usedInRations.length > 0) {
       const rationNames = usedInRations.map((r) => r.name).join('، ');
-      alert(
-        `تنبيه: الخامة (${item?.name || ''}) مستخدمة حالياً داخل التركيبات العلفية التالية:\n[${rationNames}]\n\nيرجى إزالتها أو تعديل العليقة أولاً قبل حذف الخامة.`
+      showToast(
+        `تنبيه: الخامة (${item?.name || ''}) مستخدمة حالياً داخل التركيبات: [${rationNames}]. يرجى إزالتها من العليقة أولاً.`,
+        'warning',
+        7000
       );
       return;
     }
 
-    setRawMaterials(rawMaterials.filter((rm) => rm.id !== id));
+    showConfirm({
+      title: 'حذف خامة علفية',
+      message: `هل أنت متأكد من حذف الخامة "${item?.name || id}"؟`,
+      isDanger: true,
+      confirmText: 'حذف',
+      onConfirm: () => {
+        setRawMaterials(rawMaterials.filter((rm) => rm.id !== id));
+        showToast('تم حذف الخامة بنجاح.', 'info');
+      },
+    });
   };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!code || !name || !unit) {
-      alert('يرجى كتابة كود واسم الخامة ووحدة القياس');
+      showToast('يرجى كتابة كود واسم الخامة ووحدة القياس', 'warning');
       return;
     }
 
     if (editingItem) {
       const updated = rawMaterials.map((rm) =>
         rm.id === editingItem.id
-          ? { ...rm, code, name, unit, price, status, notes }
+          ? { ...rm, code, name, unit, price, dryMatterPercent, status, notes }
           : rm
       );
       setRawMaterials(updated);
+      showToast('تم تحديث بيانات الخامة بنجاح.', 'success');
     } else {
       const newItem: RawMaterial = {
-        id: `rm-${Date.now()}`,
+        id: generateId('rm'),
         code,
         name,
         unit,
         price,
+        dryMatterPercent,
         status,
         notes,
       };
       setRawMaterials([...rawMaterials, newItem]);
+      showToast('تمت إضافة الخامة الجديدة بنجاح.', 'success');
     }
 
     setIsModalOpen(false);
@@ -124,13 +146,21 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
             </p>
           </div>
 
-          <button
-            onClick={handleOpenAdd}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4" />
-            <span>إضافة خامة جديدة</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleOpenAdd}
+              className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95"
+            >
+              <Plus className="w-4 h-4" />
+              <span>إضافة خامة جديدة</span>
+            </button>
+            <ExportExcelButton
+              onExport={() => exportRawMaterialsToExcel(rawMaterials)}
+              label="تصدير الخامات للإكسيل"
+              variant="secondary"
+              size="sm"
+            />
+          </div>
         </div>
 
         {/* Search */}
@@ -155,6 +185,7 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
                 <th className="py-3.5 px-4">كود الخامة</th>
                 <th className="py-3.5 px-4">اسم الخامة</th>
                 <th className="py-3.5 px-4">وحدة القياس</th>
+                <th className="py-3.5 px-4">المادة الجافة (% DM)</th>
                 <th className="py-3.5 px-4">السعر التقديري (جنية/وحدة)</th>
                 <th className="py-3.5 px-4">الحالة</th>
                 <th className="py-3.5 px-4">ملاحظات</th>
@@ -164,7 +195,7 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
             <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
               {filteredMaterials.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
                     لا توجد خامات مطابقة للبحث.
                   </td>
                 </tr>
@@ -174,6 +205,11 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
                     <td className="py-3.5 px-4 font-mono font-bold text-slate-600 text-xs">{item.code}</td>
                     <td className="py-3.5 px-4 font-black text-slate-900 text-sm">{item.name}</td>
                     <td className="py-3.5 px-4 text-xs font-bold text-slate-700">{item.unit}</td>
+                    <td className="py-3.5 px-4">
+                      <span className="inline-block px-2.5 py-0.5 rounded-lg text-xs font-black bg-blue-50 text-blue-800 border border-blue-200/80">
+                        {item.dryMatterPercent !== undefined ? `${item.dryMatterPercent}%` : '88% (افتراضي)'}
+                      </span>
+                    </td>
                     <td className="py-3.5 px-4 font-extrabold text-emerald-900 text-xs">
                       {item.price ? `${item.price.toLocaleString('ar-EG')} جنية` : 'غير محدد'}
                     </td>
@@ -232,7 +268,7 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 border border-slate-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-extrabold text-slate-900 text-lg">
-                {editingItem ? 'تعديل بيانا الخامة' : 'إضافة خامة جديدة'}
+                {editingItem ? 'تعديل بيانات الخامة' : 'إضافة خامة جديدة'}
               </h3>
               <button onClick={() => setIsModalOpen(false)} className="text-slate-400 font-bold text-lg">✕</button>
             </div>
@@ -274,9 +310,22 @@ export const RawMaterialsView: React.FC<RawMaterialsViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">السعر التقديري (اختياري)</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">المادة الجافة (% DM)</label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    max="100"
+                    step="any"
+                    value={dryMatterPercent || ''}
+                    onChange={(e) => setDryMatterPercent(e.target.value ? parseFloat(e.target.value) : undefined)}
+                    placeholder="مثال: 88.5 أو 33.2"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-emerald-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">السعر (جنية)</label>
                   <input
                     type="number"
                     step="any"

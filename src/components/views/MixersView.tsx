@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { Mixer, AnimalCategory } from '../../types';
+import { ExportExcelButton } from '../ExportExcelButton';
+import { exportMixersToExcel } from '../../utils/excelExport';
+import { generateId } from '../../utils/idGenerator';
+import { useFeedback } from '../../context/FeedbackContext';
 import { Bot as MixerIcon, Plus, Edit, Trash2 } from 'lucide-react';
 
 interface MixersViewProps {
@@ -13,6 +17,7 @@ export const MixersView: React.FC<MixersViewProps> = ({
   setMixers,
   categories,
 }) => {
+  const { showToast, showConfirm } = useFeedback();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMixer, setEditingMixer] = useState<Mixer | null>(null);
 
@@ -39,14 +44,23 @@ export const MixersView: React.FC<MixersViewProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleDeleteMixer = (id: string) => {
-    setMixers(mixers.filter((m) => m.id !== id));
+  const handleDeleteMixer = (id: string, mixerName: string) => {
+    showConfirm({
+      title: 'حذف مكسر',
+      message: `هل أنت متأكد من حذف المكسر "${mixerName}"؟`,
+      isDanger: true,
+      confirmText: 'حذف',
+      onConfirm: () => {
+        setMixers(mixers.filter((m) => m.id !== id));
+        showToast('تم حذف المكسر بنجاح.', 'info');
+      },
+    });
   };
 
   const handleSaveMixer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || maxCapacityKg <= 0) {
-      alert('يرجى كتابة اسم المكسر وتحديد السعة القصوى بالكيلو.');
+      showToast('يرجى كتابة اسم المكسر وتحديد السعة القصوى بالكيلو.', 'warning');
       return;
     }
 
@@ -55,15 +69,17 @@ export const MixersView: React.FC<MixersViewProps> = ({
         m.id === editingMixer.id ? { ...m, name, categoryId, maxCapacityKg, notes } : m
       );
       setMixers(updated);
+      showToast('تم تحديث بيانات المكسر بنجاح.', 'success');
     } else {
       const newMixer: Mixer = {
-        id: `mix-${Date.now()}`,
+        id: generateId('mix'),
         name,
         categoryId,
         maxCapacityKg,
         notes,
       };
       setMixers([...mixers, newMixer]);
+      showToast('تمت إضافة المكسر بنجاح.', 'success');
     }
 
     setIsModalOpen(false);
@@ -82,13 +98,21 @@ export const MixersView: React.FC<MixersViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={handleOpenAdd}
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95"
-        >
-          <Plus className="w-4 h-4" />
-          <span>إضافة مكسر جديد</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={handleOpenAdd}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95"
+          >
+            <Plus className="w-4 h-4" />
+            <span>إضافة مكسر جديد</span>
+          </button>
+          <ExportExcelButton
+            onExport={() => exportMixersToExcel(mixers)}
+            label="تصدير المكسرات للإكسيل"
+            variant="secondary"
+            size="sm"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -134,7 +158,7 @@ export const MixersView: React.FC<MixersViewProps> = ({
                   <Edit className="w-3.5 h-3.5" /> تعديل
                 </button>
                 <button
-                  onClick={() => handleDeleteMixer(mixer.id)}
+                  onClick={() => handleDeleteMixer(mixer.id, mixer.name)}
                   className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-lg text-xs flex items-center gap-1"
                 >
                   <Trash2 className="w-3.5 h-3.5" /> حذف
@@ -187,11 +211,11 @@ export const MixersView: React.FC<MixersViewProps> = ({
                 <label className="block text-xs font-bold text-slate-700 mb-1">السعة القصوى للمكسر (كجم) *</label>
                 <input
                   type="number"
-                  min={500}
-                  step={100}
+                  min={1}
+                  step="any"
                   required
-                  value={maxCapacityKg}
-                  onChange={(e) => setMaxCapacityKg(Number(e.target.value))}
+                  value={maxCapacityKg || ''}
+                  onChange={(e) => setMaxCapacityKg(e.target.value === '' ? 0 : parseFloat(e.target.value))}
                   placeholder="3000"
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-emerald-600"
                 />

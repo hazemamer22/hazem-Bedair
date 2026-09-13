@@ -1,11 +1,14 @@
 export type RawMaterialStatus = 'نشطة' | 'غير نشطة';
+export type RawMaterialType = 'concentrate' | 'roughage' | 'mineral' | 'liquid';
 
 export interface RawMaterial {
   id: string;
   code: string;
   name: string;
   unit: string; // e.g. "كجم", "طن", "جرام"
+  materialType?: RawMaterialType; // نوع الخامة (مركز جاف، مادة خشنة/رطبة، أملاح وإضافات، سائل)
   price?: number; // optional price per kg
+  dryMatterPercent?: number; // نسبة المادة الجافة % (مثال: 88% للذرة، 33% للسيلاج)
   status: RawMaterialStatus;
   notes?: string;
   currentStockKg?: number; // Current stock in warehouse in kg
@@ -15,21 +18,26 @@ export interface RawMaterial {
 export interface RationIngredient {
   rawMaterialId: string;
   amountKgPerHead: number; // e.g., 5.0 kg/head/day
+  inConcentratePremix?: boolean; // هل تدخل الخامة في خلاطة المركز المسبق وتعبأ في شكاير؟ (true: بالخلاطة والشكاير، false: تحميل مباشر بمكسر TMR)
 }
 
 export interface Ration {
   id: string;
   name: string;
   code?: string;
+  calculationType?: 'per_head' | 'fixed_tonnage'; // 'per_head' (كجم/رأس) or 'fixed_tonnage' (تركيبة بالطن 1000 كجم)
   notes?: string;
-  ingredients: RationIngredient[]; // List of ingredients with kg/head/day
+  ingredients: RationIngredient[]; // List of ingredients with kg/head/day or kg/ton
 }
 
 export interface AnimalCategory {
   id: string;
-  name: string; // e.g., "حلاب", "نامي", "تسمين", "جاف", "عجلات", "عجول", "انتظار ولادة"
+  name: string; // e.g., "حلاب", "نامي", "تسمين", "جاف", "عجلات", "عجول", "انتظار ولادة", "رضيع وفطام"
   rationId: string; // Attached ration
   mixerId: string; // Attached mixer
+  calculationType?: 'per_head' | 'fixed_tonnage'; // نوع حساب الفئة
+  isPeriodicMixer?: boolean; // هل المكسر يعمل بشكل دوري (يوم ويوم / عند الطلب)
+  defaultTonnageKg?: number; // الوزن المعتاد للخلطة (مثلاً 1000 أو 2000 كجم)
   notes?: string;
 }
 
@@ -42,6 +50,12 @@ export interface Barn {
   headCount: number; // e.g., 70
   baseFeedKgPerHead: number; // e.g., 50 kg/head/day
   feedingRatioPercent: number; // e.g., 110 (%)
+  averageAgeDays?: number; // متوسط العمر بالأيام (للرواضع والفطام، مثلاً 30 أو 70 يوم)
+  averageWeightKg?: number; // متوسط وزن الرأس بالكيلو (مثلاً 50 أو 90 كجم)
+  customDailyTotalKg?: number; // تقدير يدوي مباشر لكمية العنبر بالكامل (كجم)
+  refusalType?: 'percent' | 'kg'; // نوع الراجع (نسبة % أو وزن بالكيلو)
+  refusalValue?: number; // قيمة الراجع للعنبر (مثال 5% أو 150 كجم)
+  recycledRefusalAllocatedKg?: number; // كمية راجع الحلاب المحولة والمخصصة لهذا العنبر
   status: 'نشط' | 'صيانة' | 'فارغ';
   notes?: string;
 }
@@ -84,7 +98,14 @@ export interface DailyBarnState {
   barnId: string;
   headCount: number;
   feedingRatioPercent: number;
+  baseFeedKgPerHead?: number;
+  averageAgeDays?: number;
+  averageWeightKg?: number;
+  customDailyTotalKg?: number;
   rationId?: string;
+  refusalType?: 'percent' | 'kg';
+  refusalValue?: number;
+  recycledRefusalAllocatedKg?: number; // كمية راجع الحلاب المحولة والمخصصة للعنبر في هذا اليوم
   displayNumber?: string;
   displayName?: string;
 }
@@ -98,9 +119,80 @@ export interface MilkSession {
 
 export interface MilkProductionData {
   sessions: MilkSession[];
-  refusalPercent: number; // نسبة الراجع من الحلاب % (e.g., 5%)
+  refusalPercent: number; // نسبة الراجع الإجمالية للحلاب % (e.g., 5%)
+  milkPricePerKg?: number; // سعر بيع كيلو اللبن (e.g., 20 EGP)
   milkingHeadCount?: number; // عدد أبقار الحلاب (اختياري للتعديل اليدوي، أو يُحسب تلقائياً)
   notes?: string;
+}
+
+export interface WarehouseTransaction {
+  id: string;
+  rawMaterialId: string;
+  date: string; // YYYY-MM-DD
+  type: 'INCOMING' | 'WASTE' | 'ADJUSTMENT';
+  quantityKg: number;
+  supplierName?: string;
+  invoiceNumber?: string;
+  vehicleNumber?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface DailyWarehouseItemState {
+  rawMaterialId: string;
+  openingStockKg?: number; // Manual override for opening stock if needed
+  incomingKg?: number; // Total incoming on this day
+  manualIssuedKg?: number; // Actual issued if different from calculated requirements
+  wasteKg?: number; // Loss/spoilage on this day
+  notes?: string;
+}
+
+export interface PeriodicBatchCategoryConfig {
+  isMixedToday: boolean;
+  targetWeightKg: number;
+  durationDays?: number;
+  batchMode?: 'by_weight' | 'by_duration';
+  notes?: string;
+}
+
+export interface ConcentrateIngredientItem {
+  rawMaterialId: string;
+  name?: string;
+  code?: string;
+  unit?: string;
+  amountKgPerHead?: number;
+  percentageInConcentrate: number; // نسبة الخامة من إجمالي المركز %
+  requiredKg: number; // الوزن المطلوب للدفعة كجم
+  actualKg?: number; // الوزن الفعلي المحمل كجم
+  costPerKg?: number;
+}
+
+export interface ConcentratePremixOrder {
+  id: string;
+  orderNumber: string; // e.g. "أمر خلط مركز #1"
+  date: string; // YYYY-MM-DD
+  categoryId: string; // Target category (e.g., 'cat-1' حلاب, 'cat-2' تسمين)
+  rationId: string; // Attached ration
+  batchWeightKg: number; // e.g., 500 (نصف طن), 1000 (1 طن), 2000 (2 طن)
+  bagWeightKg: number; // e.g., 50 kg
+  totalBags: number; // Math.floor(batchWeightKg / bagWeightKg)
+  remainingLooseKg: number; // batchWeightKg % bagWeightKg
+  ingredients: ConcentrateIngredientItem[];
+  status: 'مكتمل ومعبأ' | 'قيد الخلط والتعبئة';
+  mixerName?: string;
+  totalCost?: number;
+  costPerBag?: number;
+  createdAt: string;
+  notes?: string;
+}
+
+export interface ConcentrateBagStock {
+  categoryId: string;
+  categoryName: string;
+  bagWeightKg: number;
+  totalBagsInStock: number;
+  looseKgInStock: number;
+  totalKgInStock: number;
 }
 
 export interface DailyOperationPlan {
@@ -108,6 +200,15 @@ export interface DailyOperationPlan {
   batches: MixBatch[];
   dailyBarnStates?: Record<string, DailyBarnState>; // barnId -> snapshot state for date
   milkProduction?: MilkProductionData;
+  periodicBatchConfigs?: Record<string, PeriodicBatchCategoryConfig>; // categoryId -> periodic batch configuration
+  warehouseState?: Record<string, DailyWarehouseItemState>; // rawMaterialId -> daily state
+  warehouseTransactions?: WarehouseTransaction[];
+  fatteningAdgKg?: number; // معدل الزيادة اليومية المتوقعة للتسمين كجم/رأس/يوم (مثال: 1.5)
+  concentrateOrders?: ConcentratePremixOrder[]; // أوامر تشغيل خلاطة المركز وتعبئة الشكاير
+  useConcentratePremixMode?: boolean; // تفعيل نمط الشكاير والمركز المسبق في أوامر تحضير المكسر
+  premixBagWeightKg?: number; // وزن الشكارة المعتمد (افتراضياً 50 كجم)
+  isClosed?: boolean; // هل تم إغلاق وترحيل اليوم
+  closedAt?: string;
   notes?: string;
 }
 
@@ -117,11 +218,14 @@ export interface FarmSettings {
   warehouseManagerName: string;
   driverName: string;
   currency: string;
+  hasConcentrateMixer?: boolean; // هل يوجد خلاطة مركز وتعبئة شكاير بالمزرعة؟ (true: مفعل، false: ملغي والخلط مباشر فقط)
+  defaultBagWeightKg?: number; // وزن الشكارة الافتراضي (مثال: 50 كجم، 25 كجم...)
 }
 
 export type ActiveTab =
   | 'dashboard'
   | 'daily_plan'
+  | 'concentrate_premix'
   | 'distributions'
   | 'prep_orders'
   | 'driver_sheet'

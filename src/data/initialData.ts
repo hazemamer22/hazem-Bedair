@@ -10,34 +10,35 @@ import {
 } from '../types';
 
 export const initialRawMaterials: RawMaterial[] = [
-  { id: 'rm-1', code: 'RM001', name: 'ذرة صفراء مجروشة', unit: 'كجم', price: 12.5, status: 'نشطة', notes: 'مصدر طاقة رئيسي', currentStockKg: 25000, minStockKg: 5000 },
-  { id: 'rm-2', code: 'RM002', name: 'كسب صويا 46%', unit: 'كجم', price: 24.0, status: 'نشطة', notes: 'بروتين عالي', currentStockKg: 15000, minStockKg: 3000 },
-  { id: 'rm-3', code: 'RM003', name: 'فول صويا كامل الدهن (Full Fat)', unit: 'كجم', price: 26.5, status: 'نشطة', notes: 'طاقة وبروتين', currentStockKg: 8000, minStockKg: 2000 },
-  { id: 'rm-4', code: 'RM004', name: 'DDGS (مقطرات الذرة)', unit: 'كجم', price: 18.0, status: 'نشطة', notes: 'ألياف وبروتين', currentStockKg: 9500, minStockKg: 2000 },
-  { id: 'rm-5', code: 'RM005', name: 'جلوتوفيد', unit: 'كجم', price: 15.0, status: 'نشطة', notes: 'علف طاقة مجفف', currentStockKg: 12000, minStockKg: 2500 },
-  { id: 'rm-6', code: 'RM006', name: 'دريس حجازي ممتاز', unit: 'كجم', price: 9.0, status: 'نشطة', notes: 'ألياف حليبية ممتازة', currentStockKg: 20000, minStockKg: 4000 },
-  { id: 'rm-7', code: 'RM007', name: 'تبن قمح ناعم', unit: 'كجم', price: 4.5, status: 'نشطة', notes: 'ملء كرش وشبع', currentStockKg: 18000, minStockKg: 3000 },
-  { id: 'rm-8', code: 'RM008', name: 'سيلاج ذرة مع الحبوب', unit: 'كجم', price: 3.2, status: 'نشطة', notes: 'مادة خضراء مخمرة', currentStockKg: 85000, minStockKg: 15000 },
-  { id: 'rm-9', code: 'RM009', name: 'مولاس سائب', unit: 'كجم', price: 8.0, status: 'نشطة', notes: 'مستساغ ومصدر طاقة سريع', currentStockKg: 6000, minStockKg: 1500 },
-  { id: 'rm-10', code: 'RM010', name: 'بيكربونات صوديوم (منظم كرش)', unit: 'كجم', price: 22.0, status: 'نشطة', notes: 'منع تحمض الكرش', currentStockKg: 1200, minStockKg: 300 },
-  { id: 'rm-11', code: 'RM011', name: 'مخلوط أملاح معدنية وفيتامينات', unit: 'كجم', price: 85.0, status: 'نشطة', notes: 'بريمكس متكامل', currentStockKg: 850, minStockKg: 200 },
-  { id: 'rm-12', code: 'RM012', name: 'مضاد سموم وإضافات', unit: 'كجم', price: 110.0, status: 'نشطة', notes: 'حماية وإضافات نادرة', currentStockKg: 500, minStockKg: 100 },
+  { id: 'rm-1', code: 'RM001', name: 'ذرة صفراء مجروشة', unit: 'كجم', materialType: 'concentrate', price: 12.5, dryMatterPercent: 88, status: 'نشطة', notes: 'مصدر طاقة رئيسي', currentStockKg: 25000, minStockKg: 5000 },
+  { id: 'rm-2', code: 'RM002', name: 'كسب صويا 46%', unit: 'كجم', materialType: 'concentrate', price: 24.0, dryMatterPercent: 89, status: 'نشطة', notes: 'بروتين عالي', currentStockKg: 15000, minStockKg: 3000 },
+  { id: 'rm-3', code: 'RM003', name: 'فول صويا كامل الدهن (Full Fat)', unit: 'كجم', materialType: 'concentrate', price: 26.5, dryMatterPercent: 90, status: 'نشطة', notes: 'طاقة وبروتين', currentStockKg: 8000, minStockKg: 2000 },
+  { id: 'rm-4', code: 'RM004', name: 'DDGS (مقطرات الذرة)', unit: 'كجم', materialType: 'concentrate', price: 18.0, dryMatterPercent: 90, status: 'نشطة', notes: 'ألياف وبروتين', currentStockKg: 9500, minStockKg: 2000 },
+  { id: 'rm-5', code: 'RM005', name: 'جلوتوفيد', unit: 'كجم', materialType: 'concentrate', price: 15.0, dryMatterPercent: 88, status: 'نشطة', notes: 'علف طاقة مجفف', currentStockKg: 12000, minStockKg: 2500 },
+  { id: 'rm-6', code: 'RM006', name: 'دريس حجازي ممتاز', unit: 'كجم', materialType: 'roughage', price: 9.0, dryMatterPercent: 88, status: 'نشطة', notes: 'ألياف حليبية ممتازة', currentStockKg: 20000, minStockKg: 4000 },
+  { id: 'rm-7', code: 'RM007', name: 'تبن قمح ناعم', unit: 'كجم', materialType: 'roughage', price: 4.5, dryMatterPercent: 90, status: 'نشطة', notes: 'ملء كرش وشبع', currentStockKg: 18000, minStockKg: 3000 },
+  { id: 'rm-8', code: 'RM008', name: 'سيلاج ذرة مع الحبوب', unit: 'كجم', materialType: 'roughage', price: 3.2, dryMatterPercent: 33, status: 'نشطة', notes: 'مادة خضراء مخمرة', currentStockKg: 85000, minStockKg: 15000 },
+  { id: 'rm-9', code: 'RM009', name: 'مولاس سائب', unit: 'كجم', materialType: 'liquid', price: 8.0, dryMatterPercent: 75, status: 'نشطة', notes: 'مستساغ ومصدر طاقة سريع', currentStockKg: 6000, minStockKg: 1500 },
+  { id: 'rm-10', code: 'RM010', name: 'بيكربونات صوديوم (منظم كرش)', unit: 'كجم', materialType: 'mineral', price: 22.0, dryMatterPercent: 99, status: 'نشطة', notes: 'منع تحمض الكرش', currentStockKg: 1200, minStockKg: 300 },
+  { id: 'rm-11', code: 'RM011', name: 'مخلوط أملاح معدنية وفيتامينات', unit: 'كجم', materialType: 'mineral', price: 85.0, dryMatterPercent: 98, status: 'نشطة', notes: 'بريمكس متكامل', currentStockKg: 850, minStockKg: 200 },
+  { id: 'rm-12', code: 'RM012', name: 'مضاد سموم وإضافات', unit: 'كجم', materialType: 'mineral', price: 110.0, dryMatterPercent: 98, status: 'نشطة', notes: 'حماية وإضافات نادرة', currentStockKg: 500, minStockKg: 100 },
 ];
 
 export const initialMixers: Mixer[] = [
   { id: 'mix-1', name: 'مكسر الحلاب (TMR 1)', categoryId: 'cat-1', maxCapacityKg: 4000, notes: 'سعة 4 طن أفقية سريعة الخلط للأبقار الحلابة' },
   { id: 'mix-2', name: 'مكسر النامي والعجلات (TMR 2)', categoryId: 'cat-3', maxCapacityKg: 3000, notes: 'سعة 3 طن متخصصة للفئات النامية' },
   { id: 'mix-3', name: 'مكسر التسمين (TMR 3)', categoryId: 'cat-2', maxCapacityKg: 3500, notes: 'سعة 3.5 طن مجهزة لخلط أعلاف التسمين' },
+  { id: 'mix-4', name: 'مكسر الرضيع والفطام (TMR 4)', categoryId: 'cat-6', maxCapacityKg: 2500, notes: 'مكسر خلطات العجول الرضيعة والفطام (خلط دوري بالطن)' },
 ];
 
 export const initialCategories: AnimalCategory[] = [
-  { id: 'cat-1', name: 'حلاب', rationId: 'rat-1', mixerId: 'mix-1', notes: 'أبقار الحلاب عالية ومتوسطة الإنتاج' },
-  { id: 'cat-2', name: 'تسمين', rationId: 'rat-2', mixerId: 'mix-3', notes: 'عجول التسمين المرحلة الأخيرة' },
-  { id: 'cat-3', name: 'نامي', rationId: 'rat-3', mixerId: 'mix-2', notes: 'العجلات والقطعان النامية' },
-  { id: 'cat-4', name: 'جاف', rationId: 'rat-3', mixerId: 'mix-2', notes: 'الأبقار في فترة التجفيف' },
-  { id: 'cat-5', name: 'عجلات', rationId: 'rat-3', mixerId: 'mix-2', notes: 'العجلات الملقحة' },
-  { id: 'cat-6', name: 'عجول', rationId: 'rat-2', mixerId: 'mix-3', notes: 'عجول رضيعة وفطام' },
-  { id: 'cat-7', name: 'انتظار ولادة', rationId: 'rat-1', mixerId: 'mix-1', notes: 'فترة الانتقال قبل الولادة' },
+  { id: 'cat-1', name: 'حلاب', rationId: 'rat-1', mixerId: 'mix-1', calculationType: 'per_head', notes: 'أبقار الحلاب عالية ومتوسطة الإنتاج' },
+  { id: 'cat-2', name: 'تسمين', rationId: 'rat-2', mixerId: 'mix-3', calculationType: 'per_head', notes: 'عجول التسمين المرحلة الأخيرة' },
+  { id: 'cat-3', name: 'نامي', rationId: 'rat-3', mixerId: 'mix-2', calculationType: 'per_head', notes: 'العجلات والقطعان النامية (تستقبل راجع الحلاب)' },
+  { id: 'cat-4', name: 'جاف', rationId: 'rat-3', mixerId: 'mix-2', calculationType: 'per_head', notes: 'الأبقار في فترة التجفيف' },
+  { id: 'cat-5', name: 'عجلات', rationId: 'rat-3', mixerId: 'mix-2', calculationType: 'per_head', notes: 'العجلات الملقحة' },
+  { id: 'cat-6', name: 'رضيع وفطام', rationId: 'rat-4', mixerId: 'mix-4', calculationType: 'fixed_tonnage', isPeriodicMixer: true, defaultTonnageKg: 2000, notes: 'عجول رضيع وفطام - خلط دوري بالطن (يوم ويوم / عند الحاجة)' },
+  { id: 'cat-7', name: 'انتظار ولادة', rationId: 'rat-1', mixerId: 'mix-1', calculationType: 'per_head', notes: 'فترة الانتقال قبل الولادة' },
 ];
 
 export const initialBarns: Barn[] = [
@@ -54,9 +55,9 @@ export const initialBarns: Barn[] = [
   { id: 'barn-8', number: 'عنبر 8', name: 'عنبر النامي 3', categoryId: 'cat-3', headCount: 45, baseFeedKgPerHead: 22.5, feedingRatioPercent: 100, status: 'نشط', notes: 'قطيع النامي C' },
 
   // فئة التسمين (3 عنابر)
-  { id: 'barn-9', number: 'عنبر 9', name: 'عنبر التسمين 1', categoryId: 'cat-2', headCount: 50, baseFeedKgPerHead: 12.6, feedingRatioPercent: 100, status: 'نشط', notes: 'دفعة التسمين الأولى' },
-  { id: 'barn-10', number: 'عنبر 10', name: 'عنبر التسمين 2', categoryId: 'cat-2', headCount: 50, baseFeedKgPerHead: 12.6, feedingRatioPercent: 100, status: 'نشط', notes: 'دفعة التسمين الثانية' },
-  { id: 'barn-11', number: 'عنبر 11', name: 'عنبر التسمين 3', categoryId: 'cat-2', headCount: 60, baseFeedKgPerHead: 12.6, feedingRatioPercent: 100, status: 'نشط', notes: 'دفعة التسمين الثالثة' },
+  { id: 'barn-9', number: 'عنبر 9', name: 'عنبر التسمين 1', categoryId: 'cat-2', headCount: 50, baseFeedKgPerHead: 15.75, feedingRatioPercent: 100, status: 'نشط', notes: 'دفعة التسمين الأولى (وزن 350 كجم)' },
+  { id: 'barn-10', number: 'عنبر 10', name: 'عنبر التسمين 2', categoryId: 'cat-2', headCount: 50, baseFeedKgPerHead: 15.75, feedingRatioPercent: 100, status: 'نشط', notes: 'دفعة التسمين الثانية (وزن 350 كجم)' },
+  { id: 'barn-11', number: 'عنبر 11', name: 'عنبر التسمين 3', categoryId: 'cat-2', headCount: 60, baseFeedKgPerHead: 15.75, feedingRatioPercent: 100, status: 'نشط', notes: 'دفعة التسمين الثالثة (وزن 350 كجم)' },
 ];
 
 export const initialRations: Ration[] = [
@@ -66,40 +67,58 @@ export const initialRations: Ration[] = [
     code: 'RAT-MILK-01',
     notes: 'عليقة نموذجية للأبقار الحلابة (إجمالي 44.5 كجم/رأس)',
     ingredients: [
-      { rawMaterialId: 'rm-1', amountKgPerHead: 6.0 },   // ذرة
-      { rawMaterialId: 'rm-2', amountKgPerHead: 2.5 },   // صويا 46%
-      { rawMaterialId: 'rm-3', amountKgPerHead: 1.0 },   // فول فات
-      { rawMaterialId: 'rm-5', amountKgPerHead: 1.0 },   // جلوتوفيد
-      { rawMaterialId: 'rm-6', amountKgPerHead: 3.0 },   // دريس
-      { rawMaterialId: 'rm-7', amountKgPerHead: 1.0 },   // تبن
-      { rawMaterialId: 'rm-8', amountKgPerHead: 30.0 },  // سيلاج
+      { rawMaterialId: 'rm-1', amountKgPerHead: 6.0, inConcentratePremix: true },   // ذرة
+      { rawMaterialId: 'rm-2', amountKgPerHead: 2.5, inConcentratePremix: true },   // صويا 46%
+      { rawMaterialId: 'rm-3', amountKgPerHead: 1.0, inConcentratePremix: true },   // فول فات
+      { rawMaterialId: 'rm-5', amountKgPerHead: 1.0, inConcentratePremix: true },   // جلوتوفيد
+      { rawMaterialId: 'rm-6', amountKgPerHead: 3.0, inConcentratePremix: false },  // دريس
+      { rawMaterialId: 'rm-7', amountKgPerHead: 1.0, inConcentratePremix: false },  // تبن
+      { rawMaterialId: 'rm-8', amountKgPerHead: 30.0, inConcentratePremix: false }, // سيلاج
     ],
   },
   {
     id: 'rat-2',
-    name: 'عليقة العجول التسمين',
-    code: 'RAT-FAT-01',
-    notes: 'معدل نمو مرتفع (إجمالي 12.6 كجم/رأس)',
+    name: 'عليقة التسمين المتكاملة (عجل 350 كجم - مركز 2.5% + سيلاج وتبن)',
+    code: 'RAT-FAT-350',
+    calculationType: 'per_head',
+    notes: 'عليقة تسمين متوازنة: 8.75 كجم مركز (شكاير بالطن) + 6 كجم سيلاج + 1 كجم تبن (إجمالي 15.75 كجم/رأس)',
     ingredients: [
-      { rawMaterialId: 'rm-1', amountKgPerHead: 6.0 },
-      { rawMaterialId: 'rm-2', amountKgPerHead: 2.0 },
-      { rawMaterialId: 'rm-4', amountKgPerHead: 1.5 },
-      { rawMaterialId: 'rm-7', amountKgPerHead: 2.5 },
-      { rawMaterialId: 'rm-9', amountKgPerHead: 0.5 },
-      { rawMaterialId: 'rm-11', amountKgPerHead: 0.1 },
+      { rawMaterialId: 'rm-1', amountKgPerHead: 5.25, inConcentratePremix: true }, // ذرة صفراء (60% من المركز)
+      { rawMaterialId: 'rm-2', amountKgPerHead: 1.75, inConcentratePremix: true }, // كسب صويا (20% من المركز)
+      { rawMaterialId: 'rm-4', amountKgPerHead: 1.49, inConcentratePremix: true }, // DDGS وردة (17% من المركز)
+      { rawMaterialId: 'rm-11', amountKgPerHead: 0.26, inConcentratePremix: true }, // أملاح وبريمكس (3% من المركز)
+      { rawMaterialId: 'rm-8', amountKgPerHead: 6.0, inConcentratePremix: false }, // سيلاج ذرة (لودر مباشر)
+      { rawMaterialId: 'rm-7', amountKgPerHead: 1.0, inConcentratePremix: false }, // تبن قمح (لودر مباشر)
     ],
   },
   {
     id: 'rat-3',
     name: 'عليقة النامي والعجلات',
     code: 'RAT-GROW-01',
+    calculationType: 'per_head',
     notes: 'عليقة نمو هيكلي (إجمالي 22.5 كجم/رأس)',
     ingredients: [
-      { rawMaterialId: 'rm-1', amountKgPerHead: 3.0 },
-      { rawMaterialId: 'rm-2', amountKgPerHead: 1.5 },
-      { rawMaterialId: 'rm-6', amountKgPerHead: 4.0 },
-      { rawMaterialId: 'rm-7', amountKgPerHead: 2.0 },
-      { rawMaterialId: 'rm-8', amountKgPerHead: 12.0 },
+      { rawMaterialId: 'rm-1', amountKgPerHead: 3.0, inConcentratePremix: true },
+      { rawMaterialId: 'rm-2', amountKgPerHead: 1.5, inConcentratePremix: true },
+      { rawMaterialId: 'rm-6', amountKgPerHead: 4.0, inConcentratePremix: false },
+      { rawMaterialId: 'rm-7', amountKgPerHead: 2.0, inConcentratePremix: false },
+      { rawMaterialId: 'rm-8', amountKgPerHead: 12.0, inConcentratePremix: false },
+    ],
+  },
+  {
+    id: 'rat-4',
+    name: 'خلطة بادئ وعجول رضيع وفطام (TMR بالطن)',
+    code: 'RAT-CALF-01',
+    calculationType: 'fixed_tonnage',
+    notes: 'تركيبة خلطة بادئ مركزة مصممة لكل 1 طن (1000 كجم) خلط مكسر',
+    ingredients: [
+      { rawMaterialId: 'rm-1', amountKgPerHead: 380, inConcentratePremix: true }, // ذرة مجروشة
+      { rawMaterialId: 'rm-2', amountKgPerHead: 260, inConcentratePremix: true }, // كسب صويا 46%
+      { rawMaterialId: 'rm-3', amountKgPerHead: 60, inConcentratePremix: true },  // فول صويا كامل الدهن
+      { rawMaterialId: 'rm-5', amountKgPerHead: 120, inConcentratePremix: true }, // جلوتوفيد
+      { rawMaterialId: 'rm-6', amountKgPerHead: 120, inConcentratePremix: false }, // دريس ممتاز ناعم
+      { rawMaterialId: 'rm-9', amountKgPerHead: 40, inConcentratePremix: false },  // مولاس
+      { rawMaterialId: 'rm-11', amountKgPerHead: 20, inConcentratePremix: true }, // بريمكس وفيتامينات
     ],
   },
 ];
@@ -192,21 +211,71 @@ export const initialDailyPlan: DailyOperationPlan = {
       notes: 'تغذية كامل عنابر النامي (6، 7، 8)',
     },
 
-    // لفات فئة التسمين
+    // لفات فئة التسمين (160 رأس موزعة على عنابر 9، 10، 11)
     {
-      id: 'batch-t1',
+      id: 'batch-f1',
       batchNumber: 'لفة 1 (تسمين)',
       mixerId: 'mix-3',
       categoryId: 'cat-2',
-      time: '09:00 ص',
-      targetWeightKg: 2016,
-      status: 'مخططة',
+      time: '09:30 ص',
+      targetWeightKg: 2520,
+      status: 'تم التحضير',
       allocations: [
-        { barnId: 'barn-9', allocatedKg: 630, allocatedPercent: 100 },
-        { barnId: 'barn-10', allocatedKg: 630, allocatedPercent: 100 },
-        { barnId: 'barn-11', allocatedKg: 756, allocatedPercent: 100 },
+        { barnId: 'barn-9', allocatedKg: 787.5, allocatedPercent: 100 },
+        { barnId: 'barn-10', allocatedKg: 787.5, allocatedPercent: 100 },
+        { barnId: 'barn-11', allocatedKg: 945.0, allocatedPercent: 100 },
       ],
-      notes: 'تغذية كامل عنابر التسمين (9، 10، 11)',
+      notes: 'تغذية كامل عنابر التسمين (9، 10، 11) - 160 رأس',
+    },
+  ],
+  useConcentratePremixMode: true, // تفعيل نمط الشكاير والمركز المسبق بالمرونة المطلوبة
+  premixBagWeightKg: 50, // وزن الشكارة القياسي (50 كجم)
+  concentrateOrders: [
+    {
+      id: 'conc-ord-1',
+      orderNumber: 'أمر خلط مركز #1 (حلاب)',
+      date: new Date().toISOString().split('T')[0],
+      categoryId: 'cat-1',
+      rationId: 'rat-1',
+      batchWeightKg: 1000, // 1 طن
+      bagWeightKg: 50,
+      totalBags: 20, // 20 شكارة
+      remainingLooseKg: 0,
+      mixerName: 'خلاطة المركز الجاف الرئيسية (2 طن)',
+      status: 'مكتمل ومعبأ',
+      createdAt: '06:00 ص',
+      notes: 'خلط دفعة 1 طن مركز حلاب عالي الإنتاج وتعبئتها في 20 شكارة زنة 50 كجم',
+      ingredients: [
+        { rawMaterialId: 'rm-1', name: 'ذرة صفراء مجروشة', code: 'RM001', unit: 'كجم', amountKgPerHead: 6.0, percentageInConcentrate: 57.14, requiredKg: 571.4, actualKg: 571.4, costPerKg: 12.5 },
+        { rawMaterialId: 'rm-2', name: 'كسب صويا 46%', code: 'RM002', unit: 'كجم', amountKgPerHead: 2.5, percentageInConcentrate: 23.81, requiredKg: 238.1, actualKg: 238.1, costPerKg: 24.0 },
+        { rawMaterialId: 'rm-3', name: 'فول صويا كامل الدهن (Full Fat)', code: 'RM003', unit: 'كجم', amountKgPerHead: 1.0, percentageInConcentrate: 9.52, requiredKg: 95.2, actualKg: 95.2, costPerKg: 26.5 },
+        { rawMaterialId: 'rm-5', name: 'جلوتوفيد', code: 'RM005', unit: 'كجم', amountKgPerHead: 1.0, percentageInConcentrate: 9.52, requiredKg: 95.3, actualKg: 95.3, costPerKg: 15.0 },
+      ],
+      totalCost: 16800,
+      costPerBag: 840,
+    },
+    {
+      id: 'conc-ord-2',
+      orderNumber: 'أمر خلط مركز #2 (تسمين 350 كجم)',
+      date: new Date().toISOString().split('T')[0],
+      categoryId: 'cat-2',
+      rationId: 'rat-2',
+      batchWeightKg: 1000, // 1 طن
+      bagWeightKg: 50,
+      totalBags: 20, // 20 شكارة
+      remainingLooseKg: 0,
+      mixerName: 'خلاطة المركز الجاف الرئيسية (2 طن)',
+      status: 'مكتمل ومعبأ',
+      createdAt: '07:30 ص',
+      notes: 'خلط دفعة 1 طن مركز تسمين (60% ذرة، 20% صويا، 17% ردة، 3% بريمكس) وتعبئتها في 20 شكارة',
+      ingredients: [
+        { rawMaterialId: 'rm-1', name: 'ذرة صفراء مجروشة', code: 'RM001', unit: 'كجم', amountKgPerHead: 5.25, percentageInConcentrate: 60.0, requiredKg: 600.0, actualKg: 600.0, costPerKg: 12.5 },
+        { rawMaterialId: 'rm-2', name: 'كسب صويا 46%', code: 'RM002', unit: 'كجم', amountKgPerHead: 1.75, percentageInConcentrate: 20.0, requiredKg: 200.0, actualKg: 200.0, costPerKg: 24.0 },
+        { rawMaterialId: 'rm-4', name: 'ردة قمح ناعمة / DDGS', code: 'RM004', unit: 'كجم', amountKgPerHead: 1.49, percentageInConcentrate: 17.0, requiredKg: 170.0, actualKg: 170.0, costPerKg: 11.5 },
+        { rawMaterialId: 'rm-11', name: 'أملاح معدنية وفيتامينات (بريمكس)', code: 'RM011', unit: 'كجم', amountKgPerHead: 0.26, percentageInConcentrate: 3.0, requiredKg: 30.0, actualKg: 30.0, costPerKg: 45.0 },
+      ],
+      totalCost: 15605,
+      costPerBag: 780.25,
     },
   ],
 };
@@ -217,4 +286,6 @@ export const initialSettings: FarmSettings = {
   warehouseManagerName: 'أستاذ / محمود حسن',
   driverName: 'أسطول سائقي المكسر (المهندس محمد)',
   currency: 'جنية مصري',
+  hasConcentrateMixer: true, // افتراضياً ميزة الخلاطة مفعلة وقابلة للإلغاء في أي وقت بنقرة واحدة
+  defaultBagWeightKg: 50,
 };

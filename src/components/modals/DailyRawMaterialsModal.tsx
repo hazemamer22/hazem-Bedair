@@ -50,8 +50,9 @@ export const DailyRawMaterialsModal: React.FC<DailyRawMaterialsModalProps> = ({
     barns
   );
 
-  // Use theoretical by default (or planned if theoretical empty)
-  const items = theoreticalItems.length > 0 ? theoreticalItems : plannedItems;
+  // Use theoretical by default (or planned if theoretical empty), filtering only active requirements
+  const rawItems = theoreticalItems.length > 0 ? theoreticalItems : plannedItems;
+  const items = rawItems.filter((i) => i.totalRequiredKgToday > 0);
 
   const totalDemandKg = items.reduce((sum, item) => sum + item.totalRequiredKgToday, 0);
   const totalCost = items.reduce((sum, item) => sum + item.totalCostToday, 0);
@@ -160,14 +161,14 @@ export const DailyRawMaterialsModal: React.FC<DailyRawMaterialsModalProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  sortedItems.map((item) => {
+                  sortedItems.map((item, idx) => {
                     const percent =
                       totalDemandKg > 0
                         ? Math.round((item.totalRequiredKgToday / totalDemandKg) * 1000) / 10
                         : 0;
 
                     return (
-                      <tr key={item.rawMaterialId} className="hover:bg-amber-50/40 transition-colors">
+                      <tr key={`raw-req-${item.rawMaterialId || 'rm'}-${idx}`} className="hover:bg-amber-50/40 transition-colors">
                         <td className="py-3.5 px-4 font-mono font-bold text-slate-500">
                           {item.code}
                         </td>

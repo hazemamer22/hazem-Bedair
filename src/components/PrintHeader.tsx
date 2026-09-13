@@ -5,7 +5,7 @@ interface PrintHeaderProps {
   documentTitle: string;
   documentSubtitle?: string;
   selectedDate: string;
-  settings: FarmSettings;
+  settings?: FarmSettings;
   batchInfo?: {
     batchNumber: string;
     categoryName?: string;
@@ -35,18 +35,21 @@ export const PrintHeader: React.FC<PrintHeaderProps> = ({
     minute: '2-digit',
   });
 
+  const farmName = settings?.farmName || 'مزرعة الألبان والتسمين';
+  const engineerName = settings?.engineerName || 'مهندس التغذية';
+
   return (
     <div className="hidden print:block mb-6 text-slate-900 border-b-2 border-slate-800 pb-4">
       {/* Top Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-black tracking-tight">{settings.farmName}</h1>
+          <h1 className="text-2xl font-black tracking-tight">{farmName}</h1>
           <p className="text-sm font-bold text-slate-700 mt-1">قسم التغذية والعلائق والتشغيل اليومي</p>
         </div>
         <div className="text-left text-xs font-semibold text-slate-600 space-y-0.5">
           <div>التاريخ: <span className="font-bold text-slate-900">{selectedDate} ({formattedDate})</span></div>
           <div>وقت الطباعة: <span className="font-bold text-slate-900">{nowTimeStr}</span></div>
-          <div>المهندس المسؤول: <span className="font-bold text-slate-900">{settings.engineerName}</span></div>
+          <div>المهندس المسؤول: <span className="font-bold text-slate-900">{engineerName}</span></div>
         </div>
       </div>
 
@@ -71,24 +74,35 @@ export const PrintHeader: React.FC<PrintHeaderProps> = ({
   );
 };
 
-export const PrintSignatures: React.FC<{ settings: FarmSettings }> = ({ settings }) => {
+export interface SignatureItem {
+  title: string;
+  name?: string;
+}
+
+interface PrintSignaturesProps {
+  settings?: FarmSettings;
+  signatures?: SignatureItem[];
+}
+
+export const PrintSignatures: React.FC<PrintSignaturesProps> = ({ settings, signatures }) => {
+  const items: SignatureItem[] =
+    signatures && signatures.length > 0
+      ? signatures
+      : [
+          { title: 'توقيع مهندس التغذية', name: settings?.engineerName || 'مهندس التغذية والتشغيل' },
+          { title: 'توقيع مسؤول المخزن', name: settings?.warehouseManagerName || 'أمين المخزن والمستودع' },
+          { title: 'توقيع السائق / الموزع', name: settings?.driverName || 'سائق عربة التوزيع TMR' },
+        ];
+
   return (
     <div className="hidden print:grid grid-cols-3 gap-4 mt-8 pt-6 border-t border-slate-300 text-center text-xs font-bold text-slate-800">
-      <div className="space-y-8">
-        <div>توقيع مهندس التغذية</div>
-        <div className="text-slate-500 font-normal">({settings.engineerName})</div>
-        <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-4" />
-      </div>
-      <div className="space-y-8">
-        <div>توقيع مسؤول المخزن</div>
-        <div className="text-slate-500 font-normal">({settings.warehouseManagerName})</div>
-        <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-4" />
-      </div>
-      <div className="space-y-8">
-        <div>توقيع السائق / الموزع</div>
-        <div className="text-slate-500 font-normal">({settings.driverName})</div>
-        <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-4" />
-      </div>
+      {items.map((item, idx) => (
+        <div key={idx} className="space-y-8">
+          <div>{item.title}</div>
+          {item.name && <div className="text-slate-500 font-normal">({item.name})</div>}
+          <div className="border-b border-dashed border-slate-400 w-3/4 mx-auto pt-4" />
+        </div>
+      ))}
     </div>
   );
 };

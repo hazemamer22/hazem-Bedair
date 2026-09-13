@@ -17,6 +17,7 @@ import {
   Settings,
   X,
   Layers,
+  Package,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -25,6 +26,7 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   farmName: string;
+  hasConcentrateMixer?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -33,10 +35,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
   farmName,
+  hasConcentrateMixer = true,
 }) => {
   const menuItems: { id: ActiveTab; label: string; icon: React.ReactNode; group: 'ops' | 'data' | 'system' }[] = [
     { id: 'dashboard', label: 'الرئيسية', icon: <LayoutDashboard className="w-5 h-5" />, group: 'ops' },
     { id: 'daily_plan', label: 'خطة التشغيل اليومية', icon: <CalendarDays className="w-5 h-5" />, group: 'ops' },
+    ...(hasConcentrateMixer
+      ? [{ id: 'concentrate_premix' as ActiveTab, label: 'خلاطة المركز والشكاير', icon: <Package className="w-5 h-5" />, group: 'ops' as const }]
+      : []),
     { id: 'distributions', label: 'توزيع اللفات على العنابر', icon: <Layers className="w-5 h-5" />, group: 'ops' },
     { id: 'prep_orders', label: 'أوامر تحضير المكسر', icon: <ClipboardList className="w-5 h-5" />, group: 'ops' },
     { id: 'driver_sheet', label: 'كشف السائق والتوزيع', icon: <Truck className="w-5 h-5" />, group: 'ops' },
