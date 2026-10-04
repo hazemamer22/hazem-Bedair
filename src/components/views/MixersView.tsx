@@ -1,4 +1,9 @@
 import React, { useState } from 'react';
+import {
+  useLanguage,
+  getMixerDisplayName,
+  getCategoryDisplayName,
+} from '../../context/LanguageContext';
 import { Mixer, AnimalCategory } from '../../types';
 import { ExportExcelButton } from '../ExportExcelButton';
 import { exportMixersToExcel } from '../../utils/excelExport';
@@ -18,6 +23,9 @@ export const MixersView: React.FC<MixersViewProps> = ({
   categories,
 }) => {
   const { showToast, showConfirm } = useFeedback();
+  const { language, isRtl } = useLanguage();
+  const isEn = language === 'en';
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingMixer, setEditingMixer] = useState<Mixer | null>(null);
 
@@ -28,7 +36,7 @@ export const MixersView: React.FC<MixersViewProps> = ({
 
   const handleOpenAdd = () => {
     setEditingMixer(null);
-    setName(`مكسر TMR ${mixers.length + 1}`);
+    setName(isEn ? `TMR Mixer ${mixers.length + 1}` : `مكسر TMR ${mixers.length + 1}`);
     setCategoryId(categories[0]?.id || '');
     setMaxCapacityKg(3000);
     setNotes('');
@@ -46,13 +54,15 @@ export const MixersView: React.FC<MixersViewProps> = ({
 
   const handleDeleteMixer = (id: string, mixerName: string) => {
     showConfirm({
-      title: 'حذف مكسر',
-      message: `هل أنت متأكد من حذف المكسر "${mixerName}"؟`,
+      title: isEn ? 'Delete Mixer' : 'حذف مكسر',
+      message: isEn
+        ? `Are you sure you want to delete mixer "${mixerName}"?`
+        : `هل أنت متأكد من حذف المكسر "${mixerName}"؟`,
       isDanger: true,
-      confirmText: 'حذف',
+      confirmText: isEn ? 'Delete' : 'حذف',
       onConfirm: () => {
         setMixers(mixers.filter((m) => m.id !== id));
-        showToast('تم حذف المكسر بنجاح.', 'info');
+        showToast(isEn ? 'Mixer deleted successfully.' : 'تم حذف المكسر بنجاح.', 'info');
       },
     });
   };
@@ -60,7 +70,12 @@ export const MixersView: React.FC<MixersViewProps> = ({
   const handleSaveMixer = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || maxCapacityKg <= 0) {
-      showToast('يرجى كتابة اسم المكسر وتحديد السعة القصوى بالكيلو.', 'warning');
+      showToast(
+        isEn
+          ? 'Please enter mixer name and valid capacity in kilograms.'
+          : 'يرجى كتابة اسم المكسر وتحديد السعة القصوى بالكيلو.',
+        'warning'
+      );
       return;
     }
 
@@ -69,7 +84,7 @@ export const MixersView: React.FC<MixersViewProps> = ({
         m.id === editingMixer.id ? { ...m, name, categoryId, maxCapacityKg, notes } : m
       );
       setMixers(updated);
-      showToast('تم تحديث بيانات المكسر بنجاح.', 'success');
+      showToast(isEn ? 'Mixer updated successfully.' : 'تم تحديث بيانات المكسر بنجاح.', 'success');
     } else {
       const newMixer: Mixer = {
         id: generateId('mix'),
@@ -79,36 +94,38 @@ export const MixersView: React.FC<MixersViewProps> = ({
         notes,
       };
       setMixers([...mixers, newMixer]);
-      showToast('تمت إضافة المكسر بنجاح.', 'success');
+      showToast(isEn ? 'New mixer added successfully.' : 'تمت إضافة المكسر بنجاح.', 'success');
     }
 
     setIsModalOpen(false);
   };
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${isEn ? 'text-left' : 'text-right'}`} dir={isRtl ? 'rtl' : 'ltr'}>
       <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h3 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
             <MixerIcon className="w-5 h-5 text-emerald-700" />
-            خلاطات ومكسرات العلف بالمزرعة (TMR Feed Mixers)
+            <span>{isEn ? 'Farm TMR Feed Mixers & Wagons' : 'خلاطات ومكسرات العلف بالمزرعة (TMR Feed Mixers)'}</span>
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            إضافة وتعديل مكسرات العلف، تحديد السعة القصوى بالكيلو والتحكم بالسعة التشغيلية
+            {isEn
+              ? 'Add and manage feed mixers, configure maximum capacity (kg) and operational thresholds'
+              : 'إضافة وتعديل مكسرات العلف، تحديد السعة القصوى بالكيلو والتحكم بالسعة التشغيلية'}
           </p>
         </div>
 
         <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
           <button
             onClick={handleOpenAdd}
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
-            <span>إضافة مكسر جديد</span>
+            <span>{isEn ? 'Add New Mixer' : 'إضافة مكسر جديد'}</span>
           </button>
           <ExportExcelButton
             onExport={() => exportMixersToExcel(mixers)}
-            label="تصدير المكسرات للإكسيل"
+            label={isEn ? 'Export to Excel' : 'تصدير المكسرات للإكسيل'}
             variant="secondary"
             size="sm"
           />
@@ -126,42 +143,46 @@ export const MixersView: React.FC<MixersViewProps> = ({
             >
               <div className="space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <h4 className="font-black text-lg text-slate-900">{mixer.name}</h4>
+                  <h4 className="font-black text-lg text-slate-900">{getMixerDisplayName(mixer.name, isEn)}</h4>
                   <span className="text-xs font-bold text-amber-900 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
-                    مكسر جاهز
+                    {isEn ? 'Ready Mixer' : 'مكسر جاهز'}
                   </span>
                 </div>
 
                 <div className="space-y-2 text-xs font-medium text-slate-700">
                   <div className="flex justify-between">
-                    <span className="text-slate-500">الفئة التابعة:</span>
-                    <span className="font-bold text-slate-900">{cat?.name || 'عام'}</span>
+                    <span className="text-slate-500">{isEn ? 'Primary Category:' : 'الفئة التابعة:'}</span>
+                    <span className="font-bold text-slate-900">
+                      {cat ? getCategoryDisplayName(cat.name, isEn) : (isEn ? 'General' : 'عام')}
+                    </span>
                   </div>
                   <div className="flex justify-between border-t border-dashed border-slate-200 pt-2 text-slate-900">
-                    <span className="text-slate-500 font-bold">السعة القصوى للخلطة:</span>
+                    <span className="text-slate-500 font-bold">{isEn ? 'Max Batch Capacity:' : 'السعة القصوى للخلطة:'}</span>
                     <span className="font-black text-emerald-900 text-sm">
-                      {mixer.maxCapacityKg.toLocaleString('ar-EG')} كجم ({(mixer.maxCapacityKg / 1000).toFixed(1)} طن)
+                      {mixer.maxCapacityKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'} ({(mixer.maxCapacityKg / 1000).toFixed(1)} {isEn ? 'ton' : 'طن'})
                     </span>
                   </div>
                 </div>
 
                 <p className="text-xs text-slate-500 pt-1 border-t border-slate-100">
-                  {mixer.notes || 'لا توجد ملاحظات ميكانيكية'}
+                  {mixer.notes || (isEn ? 'No mechanical notes' : 'لا توجد ملاحظات ميكانيكية')}
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
                 <button
                   onClick={() => handleOpenEdit(mixer)}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1"
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer"
                 >
-                  <Edit className="w-3.5 h-3.5" /> تعديل
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>{isEn ? 'Edit' : 'تعديل'}</span>
                 </button>
                 <button
                   onClick={() => handleDeleteMixer(mixer.id, mixer.name)}
-                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-lg text-xs flex items-center gap-1"
+                  className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-lg text-xs flex items-center gap-1 cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" /> حذف
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{isEn ? 'Delete' : 'حذف'}</span>
                 </button>
               </div>
             </div>
@@ -171,29 +192,31 @@ export const MixersView: React.FC<MixersViewProps> = ({
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 border border-slate-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 border border-slate-200" dir={isRtl ? 'rtl' : 'ltr'}>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="font-extrabold text-slate-900 text-lg">
-                {editingMixer ? 'تعديل بيانات المكسر' : 'إضافة مكسر جديد'}
+                {editingMixer
+                  ? (isEn ? 'Edit Mixer Details' : 'تعديل بيانات المكسر')
+                  : (isEn ? 'Add New Mixer' : 'إضافة مكسر جديد')}
               </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 font-bold text-lg">✕</button>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 font-bold text-lg cursor-pointer">✕</button>
             </div>
 
-            <form onSubmit={handleSaveMixer} className="space-y-4 text-right">
+            <form onSubmit={handleSaveMixer} className={`space-y-4 ${isEn ? 'text-left' : 'text-right'}`}>
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">اسم/رقم المكسر *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'Mixer Name / Code *' : 'اسم/رقم المكسر *'}</label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="مثال: مكسر الحلاب (TMR 1)..."
+                  placeholder={isEn ? 'e.g. Milking Mixer (TMR 1)...' : 'مثال: مكسر الحلاب (TMR 1)...'}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-emerald-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الفئة الرئيسية للخدمة</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'Primary Served Category' : 'الفئة الرئيسية للخدمة'}</label>
                 <select
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
@@ -208,7 +231,7 @@ export const MixersView: React.FC<MixersViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">السعة القصوى للمكسر (كجم) *</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'Max Mixer Capacity (kg) *' : 'السعة القصوى للمكسر (كجم) *'}</label>
                 <input
                   type="number"
                   min={1}
@@ -222,12 +245,12 @@ export const MixersView: React.FC<MixersViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات التشغيل والصيانة</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'Operational & Maintenance Notes' : 'ملاحظات التشغيل والصيانة'}</label>
                 <textarea
                   rows={2}
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="ملاحظات حول الوزن، السكين، السرعة..."
+                  placeholder={isEn ? 'Notes on knives, speed, scale calibration...' : 'ملاحظات حول الوزن، السكين، السرعة...'}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:outline-emerald-600"
                 />
               </div>
@@ -236,15 +259,15 @@ export const MixersView: React.FC<MixersViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold cursor-pointer"
                 >
-                  إلغاء
+                  {isEn ? 'Cancel' : 'إلغاء'}
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-2xs"
+                  className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-2xs cursor-pointer"
                 >
-                  حفظ المكسر
+                  {isEn ? 'Save Mixer' : 'حفظ المكسر'}
                 </button>
               </div>
             </form>

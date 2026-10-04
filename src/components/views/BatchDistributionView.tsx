@@ -1,5 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  useLanguage,
+  getBarnNumberDisplayName,
+  getBarnNameDisplayName,
+  getCategoryDisplayName,
+  getBatchNumberDisplayName,
+  getMixerDisplayName,
+} from '../../context/LanguageContext';
+import {
   DailyOperationPlan,
   AnimalCategory,
   Barn,
@@ -80,6 +88,8 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
   settings,
 }) => {
   const { showToast } = useFeedback();
+  const { language, isRtl, t } = useLanguage();
+  const isEn = language === 'en';
   const [viewMode, setViewMode] = useState<'by_barn' | 'by_batch'>('by_barn');
 
   // Selected filters
@@ -91,7 +101,14 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
   const activeMixer = mixers.find((m) => m.id === activeCategory?.mixerId);
 
   const activeCategoryBarns = useMemo(
-    () => barns.filter((b) => b.categoryId === selectedCategoryId && b.status === 'نشط'),
+    () =>
+      [...barns]
+        .filter((b) => b.categoryId === selectedCategoryId && b.status === 'نشط')
+        .sort((a, b) => {
+          const orderA = a.orderIndex !== undefined ? a.orderIndex : 9999;
+          const orderB = b.orderIndex !== undefined ? b.orderIndex : 9999;
+          return orderA - orderB;
+        }),
     [barns, selectedCategoryId]
   );
 
@@ -240,7 +257,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     });
 
     setStatusMessage({
-      text: `تم توزيع استحقاق (${activeBarn.name || activeBarn.number}) بالتساوي بنسبة ${pct}% على الـ ${count} لفات!`,
+      text: isEn
+        ? `Allocated share of (${activeBarn.name || activeBarn.number}) equally at ${pct}% across ${count} batches!`
+        : `تم توزيع استحقاق (${activeBarn.name || activeBarn.number}) بالتساوي بنسبة ${pct}% على الـ ${count} لفات!`,
       type: 'success',
     });
   };
@@ -256,7 +275,12 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
 
     const remainingPercent = Math.max(0, 100 - currentAllocatedPercent);
     if (remainingPercent <= 0.001) {
-      showToast('استحقاق هذا العنبر موزع بالكامل بالفعل (100%)!', 'info');
+      showToast(
+        isEn
+          ? 'This barn is already 100% fully allocated!'
+          : 'استحقاق هذا العنبر موزع بالكامل بالفعل (100%)!',
+        'info'
+      );
       return;
     }
 
@@ -289,10 +313,10 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     const newBatchNum = batches.length + 1;
     const newBatch: MixBatch = {
       id: generateId('batch'),
-      batchNumber: `لفة ${newBatchNum}`,
+      batchNumber: isEn ? `Batch ${newBatchNum}` : `لفة ${newBatchNum}`,
       categoryId: selectedCategoryId,
       mixerId: activeCategory?.mixerId || mixers[0]?.id || '',
-      time: '08:00 ص',
+      time: isEn ? '08:00 AM' : '08:00 ص',
       targetWeightKg: 3000,
       status: 'مخططة',
       allocations: [],
@@ -300,15 +324,15 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
 
     const updatedBatches = [...batches, newBatch];
     setDailyPlan({ ...dailyPlan, batches: updatedBatches });
-    showToast('تمت إضافة لفة جديدة بنجاح.', 'success');
+    showToast(isEn ? 'New mix batch added successfully.' : 'تمت إضافة لفة جديدة بنجاح.', 'success');
   };
 
   // Auto Generate Batch for this category to cover remaining demand
   const handleAutoGenerateCategoryBatch = () => {
     if (!activeCategory) return;
-    const catBarns = barns.filter((b) => b.categoryId === selectedCategoryId && b.status === 'نشط');
+    const catBarns = activeCategoryBarns;
     if (catBarns.length === 0) {
-      showToast('لا توجد عنابر نشطة في هذه الفئة!', 'warning');
+      showToast(isEn ? 'No active pens in this category!' : 'لا توجد عنابر نشطة في هذه الفئة!', 'warning');
       return;
     }
 
@@ -335,7 +359,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     });
 
     if (totalBatchWeight <= 0) {
-      showToast('جميع عنابر هذه الفئة مغطاة بنسبة 100% بالفعل!', 'info');
+      showToast(isEn ? 'All pens in this category are already 100% allocated!' : 'جميع عنابر هذه الفئة مغطاة بنسبة 100% بالفعل!', 'info');
       return;
     }
 
@@ -366,7 +390,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               ...b,
               targetWeightKg: fullWeight,
               allocations: fullAllocations,
-              notes: `تغذية كامل عنابر ${activeCategory.name} بنسبة 100%`,
+              notes: isEn
+                ? `Full feeding of all ${activeCategory.name} pens at 100%`
+                : `تغذية كامل عنابر ${activeCategory.name} بنسبة 100%`,
             };
           }
           return b;
@@ -384,7 +410,12 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
       setDailyPlan(newPlan);
       saveDailyPlan(newPlan);
       saveMasterBatchTemplate(updatedBatches);
-      showToast(`تم تحديث (${existingBatch.batchNumber}) بوزن ${Math.round(fullWeight).toLocaleString()} كجم وتغطية الفئة 100%!`, 'success');
+      showToast(
+        isEn
+          ? `Updated (${existingBatch.batchNumber}) with ${Math.round(fullWeight).toLocaleString()} kg, covering category 100%!`
+          : `تم تحديث (${existingBatch.batchNumber}) بوزن ${Math.round(fullWeight).toLocaleString()} كجم وتغطية الفئة 100%!`,
+        'success'
+      );
       return;
     }
 
@@ -392,14 +423,16 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     const newBatchId = generateId('batch');
     const newBatch: MixBatch = {
       id: newBatchId,
-      batchNumber: `لفة ${nextNum} (${activeCategory.name})`,
+      batchNumber: isEn ? `Batch ${nextNum} (${activeCategory.name})` : `لفة ${nextNum} (${activeCategory.name})`,
       categoryId: selectedCategoryId,
       mixerId: activeCategory.mixerId || mixers[0]?.id || '',
-      time: '09:30 ص',
+      time: isEn ? '09:30 AM' : '09:30 ص',
       targetWeightKg: Math.round(totalBatchWeight * 1000) / 1000,
       status: 'تم التحضير',
       allocations,
-      notes: `تغذية كامل عنابر ${activeCategory.name} تلقائياً`,
+      notes: isEn
+        ? `Automatic full feeding of ${activeCategory.name} pens`
+        : `تغذية كامل عنابر ${activeCategory.name} تلقائياً`,
     };
 
     // Update allocationsPercentMap directly
@@ -415,7 +448,12 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     const newPlan = { ...dailyPlan, batches: updatedBatches };
     setDailyPlan(newPlan);
     saveDailyPlan(newPlan);
-    showToast(`تم توليد (${newBatch.batchNumber}) بوزن ${Math.round(totalBatchWeight).toLocaleString()} كجم وتوزيعها بنسبة 100%!`, 'success');
+    showToast(
+      isEn
+        ? `Generated (${newBatch.batchNumber}) with ${Math.round(totalBatchWeight).toLocaleString()} kg and allocated 100%!`
+        : `تم توليد (${newBatch.batchNumber}) بوزن ${Math.round(totalBatchWeight).toLocaleString()} كجم وتوزيعها بنسبة 100%!`,
+      'success'
+    );
   };
 
   // Clean and sync batches from BatchDistributionView
@@ -431,7 +469,12 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     setDailyPlan(newPlan);
     saveDailyPlan(newPlan);
     saveMasterBatchTemplate(cleaned);
-    showToast('تم بنجاح إزالة التكرار ومزامنة وتحديث أوزان اللفات مع الاحتياج الفعلي للعنابر بنسبة 100%!', 'success');
+    showToast(
+      isEn
+        ? 'Successfully deduplicated and synchronized batch weights with actual pen requirements at 100%!'
+        : 'تم بنجاح إزالة التكرار ومزامنة وتحديث أوزان اللفات مع الاحتياج الفعلي للعنابر بنسبة 100%!',
+      'success'
+    );
   };
 
   // Edit Batch (Name & Time) Handler
@@ -442,7 +485,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
   const startEditBatch = (batch: MixBatch) => {
     setEditingBatchId(batch.id);
     setTempBatchName(batch.batchNumber);
-    setTempBatchTime(batch.time || '08:00 ص');
+    setTempBatchTime(batch.time || (isEn ? '08:00 AM' : '08:00 ص'));
   };
 
   const saveEditBatch = (batchId: string) => {
@@ -479,7 +522,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     });
     setDailyPlan({ ...dailyPlan, batches: updatedBatches });
     setBatchToDelete(null);
-    showToast('تم حذف اللفة بنجاح.', 'info');
+    showToast(isEn ? 'Batch deleted successfully.' : 'تم حذف اللفة بنجاح.', 'info');
   };
 
   // Direct Barn Editing Handler (Head Count, Feeding Ratio %, Name, Number)
@@ -553,7 +596,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     setDailyPlan(newPlan);
     saveMasterBatchTemplate(updatedBatches);
     setStatusMessage({
-      text: 'تم حفظ كافة توزيعات العنابر واللفات بنجاح، وتثبيتها كنمط افتراضي للأيام القادمة!',
+      text: isEn
+        ? 'All barn and batch allocations saved successfully and set as default for coming days!'
+        : 'تم حفظ كافة توزيعات العنابر واللفات بنجاح، وتثبيتها كنمط افتراضي للأيام القادمة!',
       type: 'success',
     });
   };
@@ -564,7 +609,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     setDailyPlan({ ...dailyPlan, batches: updatedBatches });
     saveMasterBatchTemplate(updatedBatches);
     setStatusMessage({
-      text: '⭐ تم تثبيت هذا النمط كقالب دائم لجميع الأيام الجديدة القادمة!',
+      text: isEn
+        ? '⭐ This pattern is permanently saved as master template for all upcoming new days!'
+        : '⭐ تم تثبيت هذا النمط كقالب دائم لجميع الأيام الجديدة القادمة!',
       type: 'success',
     });
   };
@@ -574,7 +621,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
     if (!sourceDate) return;
     const sourcePlan = loadDailyPlan(sourceDate);
     if (!sourcePlan || !sourcePlan.batches || sourcePlan.batches.length === 0) {
-      showToast('اليوم المختار لا يحتوي على أي لفات لتوزيعها!', 'warning');
+      showToast(isEn ? 'Selected date has no batches to copy!' : 'اليوم المختار لا يحتوي على أي لفات لتوزيعها!', 'warning');
       return;
     }
 
@@ -591,9 +638,16 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
       batches: clonedBatches,
     });
     setCopyModalOpen(false);
-    showToast(`تم نسخ نمط توزيعات يوم (${sourceDate}) وتطبيقها على اليوم الحالي بنجاح!`, 'success');
+    showToast(
+      isEn
+        ? `Successfully copied allocation pattern from (${sourceDate}) to current date!`
+        : `تم نسخ نمط توزيعات يوم (${sourceDate}) وتطبيقها على اليوم الحالي بنجاح!`,
+      'success'
+    );
     setStatusMessage({
-      text: `تم نسخ نمط توزيعات يوم (${sourceDate}) وتطبيقها على اليوم الحالي بنجاح!`,
+      text: isEn
+        ? `Successfully copied allocation pattern from (${sourceDate}) to current date!`
+        : `تم نسخ نمط توزيعات يوم (${sourceDate}) وتطبيقها على اليوم الحالي بنجاح!`,
       type: 'success',
     });
   };
@@ -614,7 +668,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
   const allAvailableDates = getAllPlanDates().filter((d) => d !== dailyPlan.date);
 
   return (
-    <div className="space-y-6">
+    <div className={`space-y-6 ${isEn ? 'text-left' : 'text-right'}`} dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Status Feedback Toast */}
       {statusMessage && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-emerald-950 text-white px-6 py-3 rounded-2xl shadow-2xl border border-emerald-500/40 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -630,7 +684,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                 <Copy className="w-5 h-5 text-emerald-700" />
-                <span>نسخ نمط التوزيعات من يوم سابق</span>
+                <span>{isEn ? 'Copy Allocation Pattern from Previous Date' : 'نسخ نمط التوزيعات من يوم سابق'}</span>
               </h3>
               <button
                 onClick={() => setCopyModalOpen(false)}
@@ -641,20 +695,22 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
             </div>
 
             <p className="text-xs text-slate-600 font-medium leading-relaxed">
-              اختر اليوم المراد استيراد لفاته ونسب توزيعه لتطبيقها على تاريخ اليوم الحالي ({dailyPlan.date}).
+              {isEn
+                ? `Choose the date from which to import batch allocation percentages and apply them to today (${dailyPlan.date}).`
+                : `اختر اليوم المراد استيراد لفاته ونسب توزيعه لتطبيقها على تاريخ اليوم الحالي (${dailyPlan.date}).`}
             </p>
 
             <div className="space-y-2">
-              <label className="block text-xs font-bold text-slate-700">اختر التاريخ:</label>
+              <label className="block text-xs font-bold text-slate-700">{isEn ? 'Select Source Date:' : 'اختر التاريخ:'}</label>
               <select
                 value={selectedSourceDate}
                 onChange={(e) => setSelectedSourceDate(e.target.value)}
                 className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-emerald-600"
               >
-                <option value="">-- اضغط لاختيار اليوم --</option>
+                <option value="">{isEn ? '-- Click to select a date --' : '-- اضغط لاختيار اليوم --'}</option>
                 {allAvailableDates.map((d) => (
                   <option key={d} value={d}>
-                    خطة يوم: {d}
+                    {isEn ? `Plan for: ${d}` : `خطة يوم: ${d}`}
                   </option>
                 ))}
               </select>
@@ -666,7 +722,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                 onClick={() => setCopyModalOpen(false)}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
               >
-                إلغاء
+                {isEn ? 'Cancel' : 'إلغاء'}
               </button>
               <button
                 type="button"
@@ -675,7 +731,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                 className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
               >
                 <Check className="w-4 h-4" />
-                <span>تطبيق التوزيعات</span>
+                <span>{isEn ? 'Apply Allocations' : 'تطبيق التوزيعات'}</span>
               </button>
             </div>
           </div>
@@ -688,10 +744,12 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
           <div>
             <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2">
               <Layers className="w-6 h-6 text-emerald-700" />
-              الشاشة المحورية: توزيع استحقاق العنابر على لفات المكسر
+              {isEn ? 'Batch & Pen Feed Distribution Matrix' : 'الشاشة المحورية: توزيع استحقاق العنابر على لفات المكسر'}
             </h2>
             <p className="text-xs text-slate-500 mt-1 font-medium">
-              ربط استحقاق كل عنبر (كجم) بلفات المكسر عبر النسب المئوية % مع الحفظ التلقائي الدائم للأيام القادمة
+              {isEn
+                ? 'Link pen feed requirements (kg) to TMR mixer batches via percentages (%) with automated persistence for upcoming days'
+                : 'ربط استحقاق كل عنبر (كجم) بلفات المكسر عبر النسب المئوية % مع الحفظ التلقائي الدائم للأيام القادمة'}
             </p>
           </div>
 
@@ -700,44 +758,44 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               type="button"
               onClick={handleCleanAndSyncBatches}
               className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs shadow-xs transition-all active:scale-95 cursor-pointer"
-              title="إزالة أي لفات مكررة وضبط ومزامنة أوزان اللفات مع الاحتياج الفعلي للعنابر فورياً"
+              title={isEn ? 'Clean duplicates and sync batch weights with actual pen requirements' : 'إزالة أي لفات مكررة وضبط ومزامنة أوزان اللفات مع الاحتياج الفعلي للعنابر فورياً'}
             >
               <RefreshCw className="w-4 h-4" />
-              <span>إصلاح وحذف التكرار</span>
+              <span>{isEn ? 'Fix & Clean Duplicates' : 'إصلاح وحذف التكرار'}</span>
             </button>
 
             <button
               onClick={handleSaveAllDistributions}
               className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-md shadow-emerald-700/20 transition-all active:scale-95 cursor-pointer"
-              title="حفظ التوزيع وتثبيته لليوم وللأيام القادمة"
+              title={isEn ? 'Save distributions and set as default pattern' : 'حفظ التوزيع وتثبيته لليوم وللأيام القادمة'}
             >
               <Save className="w-4 h-4 text-amber-300" />
-              <span>حفظ جميع التوزيعات</span>
+              <span>{isEn ? 'Save All Distributions' : 'حفظ جميع التوزيعات'}</span>
             </button>
 
             <button
               onClick={handleSaveAsMasterTemplate}
               className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold rounded-xl text-xs transition-all active:scale-95 cursor-pointer"
-              title="تثبيت هذا التوزيع كنمط وقالب دائم لجميع الأيام الجديدة"
+              title={isEn ? 'Lock this distribution as master template for all future days' : 'تثبيت هذا التوزيع كنمط وقالب دائم لجميع الأيام الجديدة'}
             >
               <Sparkles className="w-4 h-4 text-amber-600" />
-              <span>تثبيت كقالب دائم</span>
+              <span>{isEn ? 'Save as Master Template' : 'تثبيت كقالب دائم'}</span>
             </button>
 
             {allAvailableDates.length > 0 && (
               <button
                 onClick={() => setCopyModalOpen(true)}
                 className="inline-flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold rounded-xl text-xs transition-all cursor-pointer"
-                title="نسخ نمط التوزيع من يوم سابق"
+                title={isEn ? 'Copy distribution pattern from previous date' : 'نسخ نمط التوزيع من يوم سابق'}
               >
                 <Copy className="w-4 h-4 text-slate-600" />
-                <span>نسخ من يوم سابق</span>
+                <span>{isEn ? 'Copy from Date' : 'نسخ من يوم سابق'}</span>
               </button>
             )}
 
             <ExportExcelButton
               onExport={() => exportDailyPlanToExcel(dailyPlan, categories, mixers, rations, barns)}
-              label="تصدير للإكسيل"
+              label={isEn ? 'Export Excel' : 'تصدير للإكسيل'}
               variant="secondary"
               size="sm"
             />
@@ -746,7 +804,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
 
         {/* Quick Category / Department Tabs */}
         <div className="space-y-2">
-          <label className="block text-xs font-bold text-slate-700">أقسام وفئات القطيع (انقر للتنقل السريع بين الأقسام):</label>
+          <label className="block text-xs font-bold text-slate-700">
+            {isEn ? 'Herd Departments & Categories (Click to filter):' : 'أقسام وفئات القطيع (انقر للتنقل السريع بين الأقسام):'}
+          </label>
           <div className="flex flex-wrap gap-2">
             {categories.map((c) => {
               const catBatches = batches.filter((b) => b.categoryId === c.id || doesBatchBelongToCategory(b, c, barns));
@@ -772,14 +832,14 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                       : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
                   }`}
                 >
-                  <span className="font-black">قسم {c.name}</span>
+                  <span className="font-black">{c.name}</span>
                   <span className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${
                     isSelected ? 'bg-emerald-800 text-amber-300' : 'bg-slate-200 text-slate-600'
                   }`}>
-                    {catBatches.length} لفات
+                    {catBatches.length} {isEn ? 'batches' : 'لفات'}
                   </span>
                   <span className="text-[11px] opacity-75">
-                    ({totalHeads} رأس)
+                    ({totalHeads} {isEn ? 'heads' : 'رأس'})
                   </span>
                 </button>
               );
@@ -791,7 +851,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
           {/* Category Selector */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">اختر الفئة الحيوانية:</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'Select Animal Category:' : 'اختر الفئة الحيوانية:'}</label>
             <select
               value={selectedCategoryId}
               onChange={(e) => {
@@ -809,7 +869,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                 }, 0);
                 return (
                   <option key={c.id} value={c.id}>
-                    {c.name} {totalHeads > 0 ? `(${totalHeads} رأس)` : '(0 رأس - لا توجد قطعان)'}
+                    {c.name} {totalHeads > 0 ? `(${totalHeads} ${isEn ? 'heads' : 'رأس'})` : (isEn ? '(0 heads)' : '(0 رأس - لا توجد قطعان)')}
                   </option>
                 );
               })}
@@ -818,20 +878,20 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
 
           {/* Barn Selector */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">اختر العنبر للتوزيع:</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'Select Pen for Allocation:' : 'اختر العنبر للتوزيع:'}</label>
             <select
               value={selectedBarnId}
               onChange={(e) => setSelectedBarnId(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-emerald-600"
             >
               {activeCategoryBarns.length === 0 ? (
-                <option value="">لا توجد عنابر في هذه الفئة</option>
+                <option value="">{isEn ? 'No pens in this category' : 'لا توجد عنابر في هذه الفئة'}</option>
               ) : (
-                activeCategoryBarns.map((b) => {
+                activeCategoryBarns.map((b, idx) => {
                   const bState = getBarnDailyState(b, dailyPlan);
                   return (
                     <option key={b.id} value={b.id}>
-                      {bState.displayNumber || b.number} {bState.displayName ? `(${bState.displayName})` : ''} - {bState.headCount} رأس
+                      #{b.orderIndex || idx + 1} - {bState.displayNumber || b.number} {bState.displayName ? `(${bState.displayName})` : ''} - {bState.headCount} {isEn ? 'heads' : 'رأس'}
                     </option>
                   );
                 })
@@ -841,7 +901,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
 
           {/* View Mode Toggle */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">نمط العرض والتوزيع:</label>
+            <label className="block text-xs font-bold text-slate-700 mb-1">{isEn ? 'View & Allocation Mode:' : 'نمط العرض والتوزيع:'}</label>
             <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
               <button
                 type="button"
@@ -852,7 +912,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🏠 التوزيع حسب العنبر
+                🏠 {isEn ? 'By Barn' : 'التوزيع حسب العنبر'}
               </button>
               <button
                 type="button"
@@ -863,7 +923,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                🚜 التوزيع حسب اللفة
+                🚜 {isEn ? 'By Batch' : 'التوزيع حسب اللفة'}
               </button>
             </div>
           </div>
@@ -878,28 +938,30 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-3">
               <div>
                 <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-                  فئة: {activeCategory?.name} | مكسر: {activeMixer?.name || 'مكسر TMR'}
+                  {isEn
+                    ? `Category: ${activeCategory?.name} | Mixer: ${activeMixer?.name || 'TMR Mixer'}`
+                    : `فئة: ${activeCategory?.name} | مكسر: ${activeMixer?.name || 'مكسر TMR'}`}
                 </span>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   <h3 className="font-black text-slate-900 text-lg flex items-center gap-1.5 shrink-0">
                     <Home className="w-5 h-5 text-emerald-700" />
-                    <span>تفاصيل استحقاق:</span>
+                    <span>{isEn ? 'Allocation Details:' : 'تفاصيل استحقاق:'}</span>
                   </h3>
                   <input
                     type="text"
                     value={activeBarnState.displayNumber || activeBarn.number}
                     onChange={(e) => handleBarnChange(activeBarn.id, { number: e.target.value })}
                     className="w-24 font-black text-slate-900 text-sm bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 text-center focus:bg-white focus:outline-emerald-600"
-                    title="تعديل رقم العنبر"
-                    placeholder="رقم العنبر"
+                    title={isEn ? 'Edit Barn Number' : 'تعديل رقم العنبر'}
+                    placeholder={isEn ? 'Barn #' : 'رقم العنبر'}
                   />
                   <input
                     type="text"
                     value={activeBarnState.displayName || activeBarn.name || ''}
                     onChange={(e) => handleBarnChange(activeBarn.id, { name: e.target.value })}
                     className="w-32 font-bold text-slate-700 text-sm bg-slate-50 border border-slate-300 rounded-lg px-2 py-1 focus:bg-white focus:outline-emerald-600"
-                    title="تعديل اسم العنبر"
-                    placeholder="اسم العنبر (اختياري)"
+                    title={isEn ? 'Edit Barn Name' : 'تعديل اسم العنبر'}
+                    placeholder={isEn ? 'Barn Name (optional)' : 'اسم العنبر (اختياري)'}
                   />
                 </div>
               </div>
@@ -909,21 +971,27 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                 <button
                   onClick={handleDistributeAllEquallyToBarn}
                   className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95"
-                  title={`توزيع استحقاق العنبر بالتساوي بنسبة ${categoryBatches.length > 0 ? (100 / categoryBatches.length).toFixed(1) : 25}% على كل لفة`}
+                  title={isEn
+                    ? `Distribute barn allocation equally (${categoryBatches.length > 0 ? (100 / categoryBatches.length).toFixed(1) : 25}% per batch)`
+                    : `توزيع استحقاق العنبر بالتساوي بنسبة ${categoryBatches.length > 0 ? (100 / categoryBatches.length).toFixed(1) : 25}% على كل لفة`}
                 >
                   <Divide className="w-4 h-4 text-amber-300" />
                   <span>
-                    توزيع بالتساوي {categoryBatches.length > 0 ? `(${Math.round(100 / categoryBatches.length)}% × ${categoryBatches.length} لفات)` : ''}
+                    {isEn
+                      ? `Distribute Equally ${categoryBatches.length > 0 ? `(${Math.round(100 / categoryBatches.length)}% × ${categoryBatches.length} batches)` : ''}`
+                      : `توزيع بالتساوي ${categoryBatches.length > 0 ? `(${Math.round(100 / categoryBatches.length)}% × ${categoryBatches.length} لفات)` : ''}`}
                   </span>
                 </button>
 
                 <button
                   onClick={handleAutoGenerateCategoryBatch}
                   className="px-3.5 py-2 bg-teal-700 hover:bg-teal-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-2xs cursor-pointer active:scale-95"
-                  title="توليد لفة تلقائية وتوزيع استحقاق عنابر هذه الفئة بالكامل بنسبة 100%"
+                  title={isEn
+                    ? 'Auto-generate batch and allocate 100% of this category requirements'
+                    : 'توليد لفة تلقائية وتوزيع استحقاق عنابر هذه الفئة بالكامل بنسبة 100%'}
                 >
                   <Zap className="w-4 h-4 text-amber-300" />
-                  <span>توليد لفة تلقائية (100%)</span>
+                  <span>{isEn ? 'Auto-Generate Batch (100%)' : 'توليد لفة تلقائية (100%)'}</span>
                 </button>
 
                 <button
@@ -931,7 +999,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                   className="px-3.5 py-2 bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Divide className="w-4 h-4 text-amber-700" />
-                  <span>توزيع المتبقي بالتساوي</span>
+                  <span>{isEn ? 'Distribute Remainder Equally' : 'توزيع المتبقي بالتساوي'}</span>
                 </button>
 
                 <button
@@ -939,7 +1007,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                   className="px-3.5 py-2 bg-slate-800 text-white hover:bg-slate-900 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Plus className="w-4 h-4 text-amber-300" />
-                  <span>إضافة لفة</span>
+                  <span>{isEn ? '+ Add Batch' : 'إضافة لفة'}</span>
                 </button>
               </div>
             </div>
@@ -947,7 +1015,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
             {/* Formula Breakdown Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-bold">
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 focus-within:border-emerald-500 transition-all">
-                <label className="text-slate-500 block text-[11px] mb-1">عدد الرؤوس (تعديل مباشر):</label>
+                <label className="text-slate-500 block text-[11px] mb-1">
+                  {isEn ? 'Head Count (Direct Edit):' : 'عدد الرؤوس (تعديل مباشر):'}
+                </label>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="number"
@@ -958,18 +1028,24 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                     }
                     className="w-full font-black text-slate-900 text-base bg-white border border-slate-300 rounded-lg px-2 py-1 text-center focus:outline-emerald-600"
                   />
-                  <span className="text-xs font-bold text-slate-600 shrink-0">رأس</span>
+                  <span className="text-xs font-bold text-slate-600 shrink-0">{isEn ? 'heads' : 'رأس'}</span>
                 </div>
               </div>
 
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <span className="text-slate-500 block text-[11px]">العليقة المقررة:</span>
+                <span className="text-slate-500 block text-[11px]">
+                  {isEn ? 'Target Ration:' : 'العليقة المقررة:'}
+                </span>
                 <span className="text-emerald-900 text-sm font-black">{activeRation?.name || '—'}</span>
-                <span className="text-[10px] text-slate-500 block font-semibold">({rationKgPerHead} كجم/رأس)</span>
+                <span className="text-[10px] text-slate-500 block font-semibold">
+                  ({rationKgPerHead} {isEn ? 'kg/head' : 'كجم/رأس'})
+                </span>
               </div>
 
               <div className="bg-amber-50/80 p-3 rounded-xl border border-amber-200 focus-within:border-amber-500 transition-all">
-                <label className="text-amber-800 block text-[11px] mb-1">نسبة التغذية % (تعديل مباشر):</label>
+                <label className="text-amber-800 block text-[11px] mb-1">
+                  {isEn ? 'Feeding Ratio % (Direct Edit):' : 'نسبة التغذية % (تعديل مباشر):'}
+                </label>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="number"
@@ -989,9 +1065,11 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               </div>
 
               <div className="bg-emerald-900 text-emerald-50 p-3 rounded-xl">
-                <span className="text-emerald-300 block text-[11px]">الاستحقاق اليومي الإجمالي:</span>
+                <span className="text-emerald-300 block text-[11px]">
+                  {isEn ? 'Total Daily Target Demand:' : 'الاستحقاق اليومي الإجمالي:'}
+                </span>
                 <span className="text-amber-300 text-lg font-black">
-                  {barnDailyDemandKg.toLocaleString('ar-EG')} كجم/يوم
+                  {barnDailyDemandKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg/day' : 'كجم/يوم'}
                 </span>
               </div>
             </div>
@@ -1017,13 +1095,21 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                 <div>
                   <div className="font-black text-sm">
                     {Math.abs(currentBarnDiffKg) <= 1
-                      ? 'توزيع استحقاق العنبر مكتمل بنجاح (100%)!'
+                      ? isEn
+                        ? 'Pen allocation is fully satisfied (100%)!'
+                        : 'توزيع استحقاق العنبر مكتمل بنجاح (100%)!'
                       : currentBarnDiffKg > 1
-                      ? `خطأ: إجمالي التوزيع يتجاوز استحقاق العنبر (100%) بـ ${currentBarnDiffPercent}% (${currentBarnDiffKg.toLocaleString()} كجم)`
+                      ? isEn
+                        ? `Warning: Total allocation exceeds pen target (100%) by ${currentBarnDiffPercent}% (${currentBarnDiffKg.toLocaleString()} kg)`
+                        : `خطأ: إجمالي التوزيع يتجاوز استحقاق العنبر (100%) بـ ${currentBarnDiffPercent}% (${currentBarnDiffKg.toLocaleString()} كجم)`
+                      : isEn
+                      ? `Remaining ${Math.abs(currentBarnDiffPercent)}% (${Math.abs(currentBarnDiffKg).toLocaleString()} kg) unallocated`
                       : `متبقي ${Math.abs(currentBarnDiffPercent)}% (${Math.abs(currentBarnDiffKg).toLocaleString()} كجم) لم يتم توزيعه على اللفات`}
                   </div>
                   <div className="opacity-80 font-medium mt-0.5">
-                    إجمالي الموزع حاليًا على اللفات: {currentBarnAllocatedKgSum.toLocaleString()} كجم ({currentBarnAllocatedPercentSum}%) من أصل {barnDailyDemandKg.toLocaleString()} كجم
+                    {isEn
+                      ? `Currently allocated across batches: ${currentBarnAllocatedKgSum.toLocaleString()} kg (${currentBarnAllocatedPercentSum}%) out of ${barnDailyDemandKg.toLocaleString()} kg`
+                      : `إجمالي الموزع حاليًا على اللفات: ${currentBarnAllocatedKgSum.toLocaleString()} كجم (${currentBarnAllocatedPercentSum}%) من أصل ${barnDailyDemandKg.toLocaleString()} كجم`}
                   </div>
                 </div>
               </div>
@@ -1041,31 +1127,39 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
             <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
               <div>
                 <h4 className="font-extrabold text-slate-800 text-sm">
-                  جدول لفات المكسر المتاحة لفئة ({activeCategory?.name}) لتوزيع استحقاق ({activeBarnState.displayNumber || activeBarn.number})
+                  {isEn
+                    ? `Mixer Batches Available for (${activeCategory?.name}) to Distribute (${activeBarnState.displayNumber || activeBarn.number})`
+                    : `جدول لفات المكسر المتاحة لفئة (${activeCategory?.name}) لتوزيع استحقاق (${activeBarnState.displayNumber || activeBarn.number})`}
                 </h4>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  النسبة % هي الأساس المحفوظ؛ عند الانتقال لأيام جديدة تظل النسبة محفوظة وتُحسب الأوزان وفق رؤوس اليوم الجديد
+                  {isEn
+                    ? 'Percentage % is the primary persisted basis; when transitioning to new dates, percentages remain locked while weights scale to the new day head counts'
+                    : 'النسبة % هي الأساس المحفوظ؛ عند الانتقال لأيام جديدة تظل النسبة محفوظة وتُحسب الأوزان وفق رؤوس اليوم الجديد'}
                 </p>
               </div>
 
               <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
-                عدد اللفات: {categoryBatches.length}
+                {isEn ? `Batches Count: ${categoryBatches.length}` : `عدد اللفات: ${categoryBatches.length}`}
               </span>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-right text-sm">
+              <table className={`w-full text-sm ${isEn ? 'text-left' : 'text-right'}`}>
                 <thead className="bg-slate-100 text-slate-700 font-bold text-xs border-b border-slate-200">
                   <tr>
-                    <th className="py-3.5 px-4">رقم اللفة</th>
-                    <th className="py-3.5 px-4">توقيت اللفة</th>
-                    <th className="py-3.5 px-4 text-center">نسبة التوزيع % من العنبر</th>
+                    <th className="py-3.5 px-4">{isEn ? 'Batch #' : 'رقم اللفة'}</th>
+                    <th className="py-3.5 px-4">{isEn ? 'Batch Time' : 'توقيت اللفة'}</th>
+                    <th className="py-3.5 px-4 text-center">{isEn ? 'Allocation %' : 'نسبة التوزيع % من العنبر'}</th>
                     <th className="py-3.5 px-4 text-center text-emerald-950 bg-emerald-50">
-                      الكمية الموزعة (كجم مشتقة)
+                      {isEn ? 'Allocated Weight (Derived kg)' : 'الكمية الموزعة (كجم مشتقة)'}
                     </th>
-                    <th className="py-3.5 px-4 text-center">إجمالي وزن اللفة الناتج</th>
-                    <th className="py-3.5 px-4">حالة سعة المكسر ({activeMixer?.maxCapacityKg} كجم)</th>
-                    <th className="py-3.5 px-4 text-center">إجراءات</th>
+                    <th className="py-3.5 px-4 text-center">{isEn ? 'Total Batch Weight' : 'إجمالي وزن اللفة الناتج'}</th>
+                    <th className="py-3.5 px-4">
+                      {isEn
+                        ? `Mixer Capacity (${activeMixer?.maxCapacityKg || 3000} kg)`
+                        : `حالة سعة المكسر (${activeMixer?.maxCapacityKg} كجم)`}
+                    </th>
+                    <th className="py-3.5 px-4 text-center">{isEn ? 'Actions' : 'إجراءات'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
@@ -1074,7 +1168,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                       <td colSpan={7} className="py-10 text-center">
                         <div className="flex flex-col items-center justify-center gap-3">
                           <p className="text-slate-500 font-bold text-sm">
-                            لا توجد لفات مكسر محددة لفئة ({activeCategory?.name}) اليوم.
+                            {isEn
+                              ? `No mixer batches assigned for (${activeCategory?.name}) today.`
+                              : `لا توجد لفات مكسر محددة لفئة (${activeCategory?.name}) اليوم.`}
                           </p>
                           <div className="flex items-center gap-2">
                             <button
@@ -1083,7 +1179,11 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                               className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all active:scale-95"
                             >
                               <Zap className="w-4 h-4 text-amber-300" />
-                              <span>توليد وتوزيع لفة تلقائية لـ {activeCategory?.name} بنسبة 100%</span>
+                              <span>
+                                {isEn
+                                  ? `Auto-Generate Batch for ${activeCategory?.name} (100%)`
+                                  : `توليد وتوزيع لفة تلقائية لـ ${activeCategory?.name} بنسبة 100%`}
+                              </span>
                             </button>
                             <button
                               type="button"
@@ -1091,7 +1191,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-xl text-xs flex items-center gap-1.5 border border-slate-300 cursor-pointer"
                             >
                               <Plus className="w-4 h-4" />
-                              <span>إضافة لفة يدوية</span>
+                              <span>{isEn ? '+ Manual Batch' : 'إضافة لفة يدوية'}</span>
                             </button>
                           </div>
                         </div>
@@ -1122,7 +1222,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                   }}
                                   autoFocus
                                   className="px-2.5 py-1 bg-white border-2 border-emerald-500 rounded-lg text-sm font-black text-slate-900 focus:outline-none w-36 shadow-xs"
-                                  placeholder="اسم اللفة..."
+                                  placeholder={isEn ? 'Batch name...' : 'اسم اللفة...'}
                                 />
                               </div>
                             ) : (
@@ -1132,7 +1232,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                   type="button"
                                   onClick={() => startEditBatch(batch)}
                                   className="p-1 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-md opacity-70 group-hover:opacity-100 transition-all cursor-pointer"
-                                  title="تعديل اسم وتوقيت اللفة"
+                                  title={isEn ? 'Edit batch name & time' : 'تعديل اسم وتوقيت اللفة'}
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
@@ -1151,13 +1251,13 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                     if (e.key === 'Escape') setEditingBatchId(null);
                                   }}
                                   className="px-2.5 py-1 bg-white border-2 border-emerald-500 rounded-lg text-xs font-black text-slate-900 focus:outline-none w-28 shadow-xs"
-                                  placeholder="مثلاً 08:30 ص"
+                                  placeholder={isEn ? 'e.g. 08:30 AM' : 'مثلاً 08:30 ص'}
                                 />
                                 <button
                                   type="button"
                                   onClick={() => saveEditBatch(batch.id)}
                                   className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer"
-                                  title="حفظ التعديلات"
+                                  title={isEn ? 'Save' : 'حفظ التعديلات'}
                                 >
                                   <Check className="w-3.5 h-3.5" />
                                 </button>
@@ -1165,7 +1265,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                   type="button"
                                   onClick={() => setEditingBatchId(null)}
                                   className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition-colors cursor-pointer"
-                                  title="إلغاء"
+                                  title={isEn ? 'Cancel' : 'إلغاء'}
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
@@ -1177,7 +1277,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                   type="button"
                                   onClick={() => startEditBatch(batch)}
                                   className="p-1 text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 rounded-md opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                                  title="تعديل التوقيت"
+                                  title={isEn ? 'Edit time' : 'تعديل التوقيت'}
                                 >
                                   <Edit2 className="w-3 h-3" />
                                 </button>
@@ -1246,13 +1346,13 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                 placeholder="0"
                                 className="w-28 text-center font-black text-emerald-950 focus:outline-emerald-600 text-base bg-transparent"
                               />
-                              <span className="font-bold text-emerald-800 text-xs">كجم</span>
+                              <span className="font-bold text-emerald-800 text-xs">{isEn ? 'kg' : 'كجم'}</span>
                             </div>
                           </td>
 
                           {/* Total Batch Weight */}
                           <td className="py-4 px-4 text-center font-extrabold text-slate-900 text-base">
-                            {batchTotalWeightKg.toLocaleString()} كجم
+                            {batchTotalWeightKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
                           </td>
 
                           {/* Mixer Capacity Check */}
@@ -1261,13 +1361,19 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                               <div className="flex items-center gap-1.5 text-rose-700 text-xs font-bold bg-rose-50 p-1.5 rounded-lg border border-rose-200">
                                 <AlertTriangle className="w-4 h-4 shrink-0" />
                                 <span>
-                                  تجاوز السعة بـ {overflowKg.toLocaleString()} كجم ({batchTotalWeightKg.toLocaleString()}/{mixerMaxCapacity.toLocaleString()})
+                                  {isEn
+                                    ? `Exceeded by ${overflowKg.toLocaleString()} kg (${batchTotalWeightKg.toLocaleString()}/${mixerMaxCapacity.toLocaleString()})`
+                                    : `تجاوز السعة بـ ${overflowKg.toLocaleString()} كجم (${batchTotalWeightKg.toLocaleString()}/${mixerMaxCapacity.toLocaleString()})`}
                                 </span>
                               </div>
                             ) : (
                               <div className="flex items-center gap-1.5 text-emerald-700 text-xs font-bold bg-emerald-50 p-1.5 rounded-lg border border-emerald-200">
                                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                                <span>ضمن السعة ({batchTotalWeightKg.toLocaleString()}/{mixerMaxCapacity.toLocaleString()} كجم)</span>
+                                <span>
+                                  {isEn
+                                    ? `Within capacity (${batchTotalWeightKg.toLocaleString()}/${mixerMaxCapacity.toLocaleString()} kg)`
+                                    : `ضمن السعة (${batchTotalWeightKg.toLocaleString()}/${mixerMaxCapacity.toLocaleString()} كجم)`}
+                                </span>
                               </div>
                             )}
                           </td>
@@ -1279,7 +1385,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                 type="button"
                                 onClick={() => handleDeleteBatch(batch.id, batch.batchNumber)}
                                 className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                title="حذف اللفة"
+                                title={isEn ? 'Delete batch' : 'حذف اللفة'}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>
@@ -1292,17 +1398,21 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                 </tbody>
                 <tfoot className="bg-emerald-950 text-emerald-50 font-bold border-t-2 border-emerald-800 text-xs">
                   <tr>
-                    <td colSpan={2} className="py-4 px-4 text-right">
-                      الإجمالي الموزع لهذا العنبر ({activeBarnState.displayNumber || activeBarn.number}):
+                    <td colSpan={2} className={`py-4 px-4 ${isEn ? 'text-left' : 'text-right'}`}>
+                      {isEn
+                        ? `Total Allocated for Pen (${activeBarnState.displayNumber || activeBarn.number}):`
+                        : `الإجمالي الموزع لهذا العنبر (${activeBarnState.displayNumber || activeBarn.number}):`}
                     </td>
                     <td className="py-4 px-4 text-center text-amber-300 font-black text-sm">
                       {currentBarnAllocatedPercentSum}%
                     </td>
                     <td className="py-4 px-4 text-center text-amber-300 font-black text-sm">
-                      {currentBarnAllocatedKgSum.toLocaleString()} كجم
+                      {currentBarnAllocatedKgSum.toLocaleString()} {isEn ? 'kg' : 'كجم'}
                     </td>
-                    <td colSpan={3} className="py-4 px-4 text-left font-medium text-emerald-200">
-                      الاستحقاق اليومي المستهدف: {barnDailyDemandKg.toLocaleString()} كجم
+                    <td colSpan={3} className={`py-4 px-4 ${isEn ? 'text-right' : 'text-left'} font-medium text-emerald-200`}>
+                      {isEn
+                        ? `Target Daily Demand: ${barnDailyDemandKg.toLocaleString()} kg`
+                        : `الاستحقاق اليومي المستهدف: ${barnDailyDemandKg.toLocaleString()} كجم`}
                     </td>
                   </tr>
                 </tfoot>
@@ -1318,7 +1428,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
           <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-2xs space-y-4">
             <h3 className="font-black text-slate-900 text-lg flex items-center gap-2 border-b border-slate-100 pb-3">
               <MixerIcon className="w-5 h-5 text-emerald-700" />
-              استعراض وتوزيع جميع عنابر الفئة ({activeCategory?.name}) حسب اللفات
+              {isEn
+                ? `Review and Distribute all Pens for Category (${activeCategory?.name}) by Batches`
+                : `استعراض وتوزيع جميع عنابر الفئة (${activeCategory?.name}) حسب اللفات`}
             </h3>
 
             <div className="space-y-6">
@@ -1334,7 +1446,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                         {editingBatchId === batch.id ? (
                           <div className="flex flex-wrap items-center gap-2 bg-slate-100 p-2 rounded-xl border border-slate-300">
                             <div className="flex items-center gap-1">
-                              <span className="text-xs font-bold text-slate-600">اسم اللفة:</span>
+                              <span className="text-xs font-bold text-slate-600">{isEn ? 'Batch:' : 'اسم اللفة:'}</span>
                               <input
                                 type="text"
                                 value={tempBatchName}
@@ -1345,11 +1457,11 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                 }}
                                 autoFocus
                                 className="px-3 py-1 bg-white border-2 border-emerald-500 rounded-lg text-sm font-black text-slate-900 focus:outline-none w-36 shadow-xs"
-                                placeholder="اسم اللفة..."
+                                placeholder={isEn ? 'Batch name...' : 'اسم اللفة...'}
                               />
                             </div>
                             <div className="flex items-center gap-1">
-                              <span className="text-xs font-bold text-slate-600">التوقيت:</span>
+                              <span className="text-xs font-bold text-slate-600">{isEn ? 'Time:' : 'التوقيت:'}</span>
                               <input
                                 type="text"
                                 value={tempBatchTime}
@@ -1359,23 +1471,23 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                   if (e.key === 'Escape') setEditingBatchId(null);
                                 }}
                                 className="px-3 py-1 bg-white border-2 border-emerald-500 rounded-lg text-xs font-black text-slate-900 focus:outline-none w-28 shadow-xs"
-                                placeholder="مثلاً 08:30 ص"
+                                placeholder={isEn ? '08:30 AM' : 'مثلاً 08:30 ص'}
                               />
                             </div>
                             <button
                               type="button"
                               onClick={() => saveEditBatch(batch.id)}
                               className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-xs font-bold px-2.5"
-                              title="حفظ التعديلات"
+                              title={isEn ? 'Save' : 'حفظ التعديلات'}
                             >
                               <Check className="w-4 h-4" />
-                              <span>حفظ</span>
+                              <span>{isEn ? 'Save' : 'حفظ'}</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => setEditingBatchId(null)}
                               className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-lg transition-colors cursor-pointer text-xs font-bold px-2"
-                              title="إلغاء"
+                              title={isEn ? 'Cancel' : 'إلغاء'}
                             >
                               <X className="w-4 h-4" />
                             </button>
@@ -1390,21 +1502,25 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                               type="button"
                               onClick={() => startEditBatch(batch)}
                               className="p-1.5 bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded-lg transition-all border border-slate-200 flex items-center gap-1 text-xs font-bold cursor-pointer"
-                              title="تعديل اسم وتوقيت اللفة"
+                              title={isEn ? 'Edit name & time' : 'تعديل اسم وتوقيت اللفة'}
                             >
                               <Edit2 className="w-3.5 h-3.5" />
-                              <span>تعديل الاسم والتوقيت</span>
+                              <span>{isEn ? 'Edit Name/Time' : 'تعديل الاسم والتوقيت'}</span>
                             </button>
                           </div>
                         )}
-                        <span className="text-xs font-bold text-slate-600">المكسر: {activeMixer?.name}</span>
+                        <span className="text-xs font-bold text-slate-600">
+                          {isEn ? 'Mixer:' : 'المكسر:'} {activeMixer?.name}
+                        </span>
                       </div>
 
                       <div className="flex items-center gap-3 text-left">
                         <div>
-                          <span className="text-xs text-slate-500 font-semibold block">إجمالي وزن اللفة:</span>
+                          <span className="text-xs text-slate-500 font-semibold block">
+                            {isEn ? 'Total Batch Weight:' : 'إجمالي وزن اللفة:'}
+                          </span>
                           <span className={`text-lg font-black ${isOver ? 'text-rose-700' : 'text-emerald-900'}`}>
-                            {totalBatchKg.toLocaleString()} كجم / {mixerMax.toLocaleString()} كجم
+                            {totalBatchKg.toLocaleString()} {isEn ? 'kg' : 'كجم'} / {mixerMax.toLocaleString()} {isEn ? 'kg' : 'كجم'}
                           </span>
                         </div>
 
@@ -1421,7 +1537,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                               settings
                             )
                           }
-                          label="أمر اللفة إكسيل"
+                          label={isEn ? 'Batch Order Excel' : 'أمر اللفة إكسيل'}
                           variant="secondary"
                           size="sm"
                         />
@@ -1430,17 +1546,17 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                           type="button"
                           onClick={() => handleDeleteBatch(batch.id, batch.batchNumber)}
                           className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl font-bold transition-all active:scale-95 border border-rose-200 flex items-center gap-1 text-xs shrink-0 cursor-pointer"
-                          title="حذف اللفة"
+                          title={isEn ? 'Delete batch' : 'حذف اللفة'}
                         >
                           <Trash2 className="w-4 h-4" />
-                          <span>حذف اللفة</span>
+                          <span>{isEn ? 'Delete Batch' : 'حذف اللفة'}</span>
                         </button>
                       </div>
                     </div>
 
                     {/* Barns Inputs inside this batch */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      {activeCategoryBarns.map((barn) => {
+                      {activeCategoryBarns.map((barn, bIdx) => {
                         const bDemand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
                         const bState = getBarnDailyState(barn, dailyPlan);
                         const currPercent = getBarnAllocatedPercent(batch.id, barn.id);
@@ -1449,19 +1565,24 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                         return (
                           <div key={barn.id} className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
                             <div className="flex items-center justify-between text-xs font-black text-slate-900">
-                              <span>
-                                {bState.displayNumber || barn.number}{' '}
-                                {bState.displayName && `(${bState.displayName})`}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-900 text-[10px] font-black inline-flex items-center justify-center border border-emerald-300">
+                                  #{barn.orderIndex || bIdx + 1}
+                                </span>
+                                <span>
+                                  {getBarnNumberDisplayName(bState.displayNumber || barn.number, isEn)}{' '}
+                                  {bState.displayName && `(${getBarnNameDisplayName(bState.displayName, isEn)})`}
+                                </span>
+                              </div>
                               <span className="text-emerald-900 font-extrabold">
-                                {bDemand.toLocaleString()} كجم/يوم
+                                {bDemand.toLocaleString()} {isEn ? 'kg/day' : 'كجم/يوم'}
                               </span>
                             </div>
 
                             {/* Quick Barn Head Count & Feeding Ratio Control */}
                             <div className="flex items-center justify-between gap-1 text-[11px] text-slate-600 bg-white p-1.5 rounded-lg border border-slate-200">
                               <div className="flex items-center gap-1">
-                                <span className="font-semibold text-slate-500">رؤوس:</span>
+                                <span className="font-semibold text-slate-500">{isEn ? 'Heads:' : 'رؤوس:'}</span>
                                 <input
                                   type="number"
                                   min={1}
@@ -1473,7 +1594,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                 />
                               </div>
                               <div className="flex items-center gap-1">
-                                <span className="font-semibold text-slate-500">تغذية%:</span>
+                                <span className="font-semibold text-slate-500">{isEn ? 'Feed %:' : 'تغذية%:'}</span>
                                 <input
                                   type="number"
                                   min={10}
@@ -1493,7 +1614,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                             {/* Direct Percentage and Derived KG Inputs */}
                             <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200">
                               <div>
-                                <label className="text-[10px] font-bold text-slate-500 block mb-0.5">نسبة % من العنبر:</label>
+                                <label className="text-[10px] font-bold text-slate-500 block mb-0.5">
+                                  {isEn ? 'Pen Share %:' : 'نسبة % من العنبر:'}
+                                </label>
                                 <div className="flex items-center bg-white border border-slate-300 rounded-lg px-2 py-1">
                                   <input
                                     type="number"
@@ -1515,7 +1638,9 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                               </div>
 
                               <div>
-                                <label className="text-[10px] font-bold text-emerald-800 block mb-0.5">الوزن المشتق (كجم):</label>
+                                <label className="text-[10px] font-bold text-emerald-800 block mb-0.5">
+                                  {isEn ? 'Weight (kg):' : 'الوزن المشتق (كجم):'}
+                                </label>
                                 <div className="flex items-center bg-emerald-50 border border-emerald-300 rounded-lg px-2 py-1">
                                   <input
                                     type="number"
@@ -1531,7 +1656,7 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                                     }
                                     className="w-full text-center font-black text-emerald-950 text-xs focus:outline-none bg-transparent"
                                   />
-                                  <span className="text-[10px] text-emerald-700 font-bold">كجم</span>
+                                  <span className="text-[10px] text-emerald-700 font-bold">{isEn ? 'kg' : 'كجم'}</span>
                                 </div>
                               </div>
                             </div>
@@ -1573,9 +1698,13 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
               <AlertOctagon className="w-6 h-6" />
             </div>
             <div className="text-center space-y-1">
-              <h3 className="font-extrabold text-slate-900 text-base">تأكيد حذف اللفة</h3>
+              <h3 className="font-extrabold text-slate-900 text-base">
+                {isEn ? 'Confirm Batch Deletion' : 'تأكيد حذف اللفة'}
+              </h3>
               <p className="text-xs text-slate-500 font-medium">
-                هل أنت متأكد من حذف ({batchToDelete.name})؟ سيتم إزالة كافة توزيعات العنابر المرتبطة بها.
+                {isEn
+                  ? `Are you sure you want to delete (${batchToDelete.name})? All associated pen distribution records will be removed.`
+                  : `هل أنت متأكد من حذف (${batchToDelete.name})؟ سيتم إزالة كافة توزيعات العنابر المرتبطة بها.`}
               </p>
             </div>
             <div className="flex items-center gap-2 pt-2">
@@ -1584,14 +1713,14 @@ export const BatchDistributionView: React.FC<BatchDistributionViewProps> = ({
                 onClick={() => setBatchToDelete(null)}
                 className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
               >
-                إلغاء
+                {isEn ? 'Cancel' : 'إلغاء'}
               </button>
               <button
                 type="button"
                 onClick={confirmDeleteBatch}
                 className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md transition-colors cursor-pointer"
               >
-                حذف نهائي
+                {isEn ? 'Delete Permanently' : 'حذف نهائي'}
               </button>
             </div>
           </div>

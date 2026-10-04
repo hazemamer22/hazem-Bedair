@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../../context/LanguageContext';
 import { AnimalCategory, Barn, Ration, Mixer, DailyOperationPlan } from '../../types';
 import {
   calculateBarnDailyDemand,
@@ -26,6 +27,9 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
   mixers,
   dailyPlan,
 }) => {
+  const { language } = useLanguage();
+  const isEn = language === 'en';
+
   if (!isOpen) return null;
 
   const activeBarns = barns.filter((b) => b.status === 'نشط');
@@ -66,8 +70,10 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
       <div
-        className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden text-right"
-        dir="rtl"
+        className={`bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden ${
+          isEn ? 'text-left' : 'text-right'
+        }`}
+        dir={isEn ? 'ltr' : 'rtl'}
       >
         {/* Header */}
         <div className="p-5 sm:p-6 bg-gradient-to-l from-emerald-800 to-emerald-950 text-white flex items-center justify-between">
@@ -76,15 +82,19 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
               <Beef className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl sm:text-2xl font-black">تفصيل قطعان وفئات المزرعة</h2>
+              <h2 className="text-xl sm:text-2xl font-black">
+                {isEn ? 'Farm Herds & Category Breakdown' : 'تفصيل قطعان وفئات المزرعة'}
+              </h2>
               <p className="text-xs sm:text-sm text-emerald-200 mt-0.5">
-                توزيع أعداد الرؤوس والعنابر والاحتياج اليومي بحسب نوع الفئة
+                {isEn
+                  ? 'Distribution of head counts, pens, and daily feed demand by animal category'
+                  : 'توزيع أعداد الرؤوس والعنابر والاحتياج اليومي بحسب نوع الفئة'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border border-white/15"
+            className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors border border-white/15 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -93,31 +103,39 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
         {/* Quick Summary Cards */}
         <div className="p-5 sm:p-6 bg-slate-50 border-b border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs">
-            <span className="text-xs font-semibold text-slate-500">إجمالي الرؤوس</span>
+            <span className="text-xs font-semibold text-slate-500">
+              {isEn ? 'Total Heads' : 'إجمالي الرؤوس'}
+            </span>
             <div className="text-xl sm:text-2xl font-black text-emerald-900 mt-1">
-              {totalFarmHeads.toLocaleString('ar-EG')}{' '}
-              <span className="text-xs font-bold text-slate-500">رأس</span>
+              {totalFarmHeads.toLocaleString()}{' '}
+              <span className="text-xs font-bold text-slate-500">{isEn ? 'heads' : 'رأس'}</span>
             </div>
           </div>
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs">
-            <span className="text-xs font-semibold text-slate-500">الفئات النشطة</span>
+            <span className="text-xs font-semibold text-slate-500">
+              {isEn ? 'Active Categories' : 'الفئات النشطة'}
+            </span>
             <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
               {categoryStats.length}{' '}
-              <span className="text-xs font-bold text-slate-500">فئات</span>
+              <span className="text-xs font-bold text-slate-500">{isEn ? 'categories' : 'فئات'}</span>
             </div>
           </div>
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs">
-            <span className="text-xs font-semibold text-slate-500">العنابر النشطة</span>
+            <span className="text-xs font-semibold text-slate-500">
+              {isEn ? 'Active Pens' : 'العنابر النشطة'}
+            </span>
             <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
               {activeBarns.length}{' '}
-              <span className="text-xs font-bold text-slate-500">عنبر</span>
+              <span className="text-xs font-bold text-slate-500">{isEn ? 'pens' : 'عنبر'}</span>
             </div>
           </div>
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-2xs">
-            <span className="text-xs font-semibold text-slate-500">إجمالي العلف اليومي</span>
+            <span className="text-xs font-semibold text-slate-500">
+              {isEn ? 'Daily Gross Feed' : 'إجمالي العلف اليومي'}
+            </span>
             <div className="text-xl sm:text-2xl font-black text-amber-700 mt-1">
               {(totalFarmDemandKg / 1000).toFixed(1)}{' '}
-              <span className="text-xs font-bold text-amber-900">طن</span>
+              <span className="text-xs font-bold text-amber-900">{isEn ? 'tons' : 'طن'}</span>
             </div>
           </div>
         </div>
@@ -134,19 +152,21 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
                 <div className="flex items-start justify-between">
                   <div>
                     <span className="px-2.5 py-0.5 rounded-lg text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200">
-                      فئة حيوانية
+                      {isEn ? 'Animal Category' : 'فئة حيوانية'}
                     </span>
                     <h3 className="text-lg font-black text-slate-900 mt-1">
                       {stat.category.name}
                     </h3>
                   </div>
-                  <div className="text-left">
+                  <div className={isEn ? 'text-right' : 'text-left'}>
                     <span className="text-2xl font-black text-emerald-950">
-                      {stat.heads.toLocaleString('ar-EG')}
+                      {stat.heads.toLocaleString()}
                     </span>
-                    <span className="text-xs font-bold text-slate-500 mr-1">رأس</span>
+                    <span className={`text-xs font-bold text-slate-500 ${isEn ? 'ml-1' : 'mr-1'}`}>
+                      {isEn ? 'head' : 'رأس'}
+                    </span>
                     <div className="text-xs font-black text-emerald-700">
-                      {stat.headsPercent}% من القطيع
+                      {stat.headsPercent}% {isEn ? 'of herd' : 'من القطيع'}
                     </div>
                   </div>
                 </div>
@@ -164,21 +184,21 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
                 {/* Details Grid */}
                 <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
                   <div>
-                    <span className="text-slate-400 font-medium">العنابر:</span>{' '}
+                    <span className="text-slate-400 font-medium">{isEn ? 'Pens:' : 'العنابر:'}</span>{' '}
                     <strong className="text-slate-800 font-black">
-                      {stat.barns.length} عنابر
+                      {stat.barns.length} {isEn ? 'pens' : 'عنابر'}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-slate-400 font-medium">استهلاك اليوم:</span>{' '}
+                    <span className="text-slate-400 font-medium">{isEn ? 'Daily Demand:' : 'استهلاك اليوم:'}</span>{' '}
                     <strong className="text-emerald-800 font-black">
-                      {stat.demandKg.toLocaleString('ar-EG')} كجم
+                      {stat.demandKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
                     </strong>
                   </div>
                   <div className="col-span-2 truncate">
-                    <span className="text-slate-400 font-medium">العليقة:</span>{' '}
+                    <span className="text-slate-400 font-medium">{isEn ? 'Ration:' : 'العليقة:'}</span>{' '}
                     <strong className="text-slate-800 font-bold">
-                      {stat.ration?.name || 'غير محددة'}
+                      {stat.ration?.name || (isEn ? 'Unassigned' : 'غير محددة')}
                     </strong>
                   </div>
                 </div>
@@ -186,11 +206,13 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
                 {/* Barn Badges */}
                 <div>
                   <span className="text-[11px] font-bold text-slate-400 block mb-1.5">
-                    عنابر الفئة وأعداد الرؤوس:
+                    {isEn ? 'Category Pens & Head Counts:' : 'عنابر الفئة وأعداد الرؤوس:'}
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {stat.barns.length === 0 ? (
-                      <span className="text-xs text-slate-400">لا توجد عنابر نشطة</span>
+                      <span className="text-xs text-slate-400">
+                        {isEn ? 'No active pens' : 'لا توجد عنابر نشطة'}
+                      </span>
                     ) : (
                       stat.barns.map((barn) => {
                         const bState = getBarnDailyState(barn, dailyPlan);
@@ -202,7 +224,7 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
                             <Building2 className="w-3 h-3 text-emerald-600" />
                             <span>{bState.displayNumber || barn.number}</span>
                             <span className="text-emerald-700 text-[11px] font-black">
-                              ({bState.headCount} رأس)
+                              ({bState.headCount} {isEn ? 'heads' : 'رأس'})
                             </span>
                           </span>
                         );
@@ -218,13 +240,15 @@ export const HerdsBreakdownModal: React.FC<HerdsBreakdownModalProps> = ({
         {/* Footer */}
         <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-500">
-            * يتم تحديث هذه الأرقام والنسب تلقائيًا وفورياً مع أي تعديل في عنابر المزرعة أو الخطة اليومية.
+            {isEn
+              ? '* Figures and percentages update automatically with any edits to pens or daily plan.'
+              : '* يتم تحديث هذه الأرقام والنسب تلقائيًا وفورياً مع أي تعديل في عنابر المزرعة أو الخطة اليومية.'}
           </span>
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors"
+            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition-colors cursor-pointer"
           >
-            إغلاق
+            {isEn ? 'Close' : 'إغلاق'}
           </button>
         </div>
       </div>

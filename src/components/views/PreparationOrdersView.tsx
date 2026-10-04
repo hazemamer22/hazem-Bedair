@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
+  useLanguage,
+  getCategoryDisplayName,
+  getRationDisplayName,
+  getMixerDisplayName,
+  getMaterialDisplayName,
+  getBatchNumberDisplayName,
+  getBarnNumberDisplayName,
+  getBarnNameDisplayName,
+} from '../../context/LanguageContext';
+import {
   DailyOperationPlan,
   AnimalCategory,
   Ration,
@@ -16,10 +26,13 @@ import {
   calculateConcentrateStock,
   calculateRationTotalKgPerHead,
   getBatchDerivedTargetWeightKg,
+  getDerivedAllocationKg,
   calculateBarnGrossDemandKg,
   calculateBarnRecycledRefusalKg,
   doesBatchBelongToCategory,
   ConsolidatedBatchIngredientItem,
+  calculateRationDmStats,
+  getRawMaterialDryMatterPercent,
 } from '../../utils/calculations';
 import { PrintHeader, PrintSignatures } from '../PrintHeader';
 import { ExportExcelButton } from '../ExportExcelButton';
@@ -48,6 +61,8 @@ import {
   ChevronUp,
   ArrowUpRight,
   Sliders,
+  Eye,
+  Building,
 } from 'lucide-react';
 
 interface PreparationOrdersViewProps {
@@ -62,6 +77,7 @@ interface PreparationOrdersViewProps {
   initialBatchId?: string;
   setActiveTab?: (tab: ActiveTab) => void;
   onPrint?: () => void;
+  onOpenPrintPreview?: (batchId?: string) => void;
 }
 
 export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
@@ -76,8 +92,12 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
   initialBatchId,
   setActiveTab,
   onPrint,
+  onOpenPrintPreview,
 }) => {
   const { showToast } = useFeedback();
+  const { language, isRtl } = useLanguage();
+  const isEn = language === 'en';
+
   // Filter batches to only those with valid target weight > 0 and assigned to barns with active animals
   const batches = useMemo(() => {
     return (dailyPlan.batches || []).filter((b) => {
@@ -107,11 +127,14 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
 
   const activeBatch = batches.find((b) => b.id === selectedBatchId) || batches[0];
   const category = categories.find((c) => c.id === activeBatch?.categoryId) || categories.find((c) => doesBatchBelongToCategory(activeBatch, c, barns));
-  const ration = rations.find((r) => r.id === category?.rationId);
+  const ration = rations.find((r) => r.id === (activeBatch?.rationId || category?.rationId || (category as any)?.defaultRationId));
   const mixer = mixers.find((m) => m.id === activeBatch?.mixerId);
   const effectiveTargetWeightKg = activeBatch
     ? getBatchDerivedTargetWeightKg(activeBatch, barns, categories, rations, dailyPlan)
     : 0;
+
+  const rationDmStats = useMemo(() => calculateRationDmStats(ration, rawMaterials), [ration, rawMaterials]);
+  const batchDmKg = Math.round(effectiveTargetWeightKg * (rationDmStats.dmPercent / 100) * 10) / 10;
 
   // Gross vs Recycled Refusal vs Net Fresh Breakdown for active batch
   let activeBatchGrossKg = 0;
@@ -226,7 +249,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
   const startEditingBatch = () => {
     if (!activeBatch) return;
     setTempBatchName(activeBatch.batchNumber);
-    setTempBatchTime(activeBatch.time || '08:00 ص');
+    setTempBatchTime(activeBatch.time || (isEn ? '08:00 AM' : '08:00 ص'));
     setIsEditingBatch(true);
   };
 
@@ -268,13 +291,18 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
         ? {
             ...b,
             targetWeightKg: effectiveTargetWeightKg,
-            status: 'تم التحضير' as const,
+            status: (isEn ? 'Prepared' : 'تم التحضير') as any,
             actualIngredientWeights: actualWeights,
           }
         : b
     );
     setDailyPlan({ ...dailyPlan, batches: updatedBatches });
-    showToast(`تم اعتماد وتحضير اللفة (${activeBatch.batchNumber}) بنجاح وتحويل حالتها إلى (تم التحضير)!`, 'success');
+    showToast(
+      isEn
+        ? `Batch (${activeBatch.batchNumber}) approved and status updated to Prepared!`
+        : `تم اعتماد وتحضير اللفة (${activeBatch.batchNumber}) بنجاح وتحويل حالتها إلى (تم التحضير)!`,
+      'success'
+    );
   };
 
   const calculatedIngredients: ConsolidatedBatchIngredientItem[] = activeBatch && ration
@@ -293,11 +321,15 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
   const totalDiffKg = Math.round((totalActualKg - totalRequiredKg) * 100) / 100;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Printable Formal Header */}
       <PrintHeader
-        documentTitle="أمر تحضير وتحميل المكسر (المركب) TMR"
-        documentSubtitle="نموذج صرف الخامات من المخزن إلى المكسر حسب النسبة المئوية للعليقة"
+        documentTitle={isEn ? 'TMR Mixer Loading & Preparation Order' : 'أمر تحضير وتحميل المكسر (المركب) TMR'}
+        documentSubtitle={
+          isEn
+            ? 'Warehouse material requisition to mixer according to ration percentages'
+            : 'نموذج صرف الخامات من المخزن إلى المكسر حسب النسبة المئوية للعليقة'
+        }
         selectedDate={dailyPlan.date}
         settings={settings}
         batchInfo={
@@ -320,28 +352,56 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
           <div>
             <h3 className="font-extrabold text-slate-900 text-lg flex items-center gap-2">
               <ClipboardList className="w-5 h-5 text-emerald-700" />
-              أمر تحضير خامات المكسر اليومي
+              {isEn ? 'Daily Mixer Preparation Order' : 'أمر تحضير خامات المكسر اليومي'}
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              حساب نسبي دقيق لكميات الخامات لكل لفة مكسر بناءً على وزن اللفة
+              {isEn
+                ? 'Accurate proportional calculation of ingredient weights per mixer load based on batch weight'
+                : 'حساب نسبي دقيق لكميات الخامات لكل لفة مكسر بناءً على وزن اللفة'}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleApproveAndPrepare}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4 text-amber-300" />
-              <span>اعتماد وتحضير اللفة</span>
+              <span>{isEn ? 'Approve & Prepare Batch' : 'اعتماد وتحضير اللفة'}</span>
             </button>
+
+            {onOpenPrintPreview && (
+              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => onOpenPrintPreview(activeBatch?.id)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white font-bold rounded-lg text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"
+                  title={isEn ? 'Preview current batch on A4' : 'معاينة أمر اللفة المعروضة حالياً على الورق A4'}
+                >
+                  <Eye className="w-3.5 h-3.5 text-emerald-300" />
+                  <span>{isEn ? 'Preview Current' : 'معاينة اللفة الحالية'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenPrintPreview('ALL')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"
+                  title={isEn ? 'Preview and print all mixer orders for today' : 'معاينة وطباعة جميع أوامر لفات المكسر لليوم بالكامل'}
+                >
+                  <Printer className="w-3.5 h-3.5 text-amber-400" />
+                  <span>{isEn ? `Preview All (${batches.length})` : `معاينة كل اللفات (${batches.length})`}</span>
+                </button>
+              </div>
+            )}
+
             <button
               onClick={() => onPrint?.() || window.print()}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs shadow-2xs transition-all active:scale-95 cursor-pointer"
+              title={isEn ? 'Quick print of current order' : 'طباعة سريعة للأمر المعروض حالياً'}
             >
-              <Printer className="w-4 h-4 text-amber-400" />
-              <span>طباعة أمر التحضير</span>
+              <Printer className="w-4 h-4 text-slate-300" />
+              <span>{isEn ? 'Quick Print' : 'طباعة فورية'}</span>
             </button>
+
             <ExportExcelButton
               onExport={() =>
                 exportPreparationOrdersToExcel(
@@ -353,7 +413,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                   settings
                 )
               }
-              label="تصدير الأوامر للإكسيل"
+              label={isEn ? 'Export to Excel' : 'تصدير للإكسيل'}
               variant="secondary"
               size="sm"
             />
@@ -362,7 +422,9 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
 
         {/* Batch Picker Grouped by Category/Department */}
         <div className="space-y-3">
-          <label className="block text-xs font-bold text-slate-700">اختر أمر التحضير (اللفات مجمعة حسب الأقسام):</label>
+          <label className="block text-xs font-bold text-slate-700">
+            {isEn ? 'Select Preparation Order (Grouped by Category):' : 'اختر أمر التحضير (اللفات مجمعة حسب الأقسام):'}
+          </label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {categories
               .filter((cat) => batches.some((b) => b.categoryId === cat.id))
@@ -376,10 +438,10 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-black text-emerald-950 bg-emerald-100/90 px-3 py-1 rounded-lg border border-emerald-300 flex items-center gap-1.5 shadow-2xs">
                         <Layers className="w-3.5 h-3.5 text-emerald-800" />
-                        <span>قسم {cat.name}</span>
+                        <span>{isEn ? `Section ${cat.name}` : `قسم ${cat.name}`}</span>
                       </span>
                       <span className="text-[11px] font-bold text-slate-500">
-                        ({catBatches.length} لفات)
+                        ({catBatches.length} {isEn ? 'batches' : 'لفات'})
                       </span>
                     </div>
 
@@ -421,7 +483,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                             <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
                               isSelected ? 'bg-emerald-950 text-amber-300' : 'bg-slate-100 text-slate-700'
                             }`}>
-                              {displayWeight.toLocaleString('ar-EG')} كجم
+                              {displayWeight.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}
                             </span>
                             {bRefusalKg > 0.1 && (
                               <span
@@ -430,9 +492,13 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                                     ? 'bg-amber-400 text-emerald-950'
                                     : 'bg-amber-100 text-amber-900 border border-amber-300'
                                 }`}
-                                title={`مخصوم ${bRefusalKg.toLocaleString('ar-EG')} كجم راجع حلاب معاد تدويره`}
+                                title={
+                                  isEn
+                                    ? `Deducted ${bRefusalKg.toLocaleString()} kg recycled milking refusal`
+                                    : `مخصوم ${bRefusalKg.toLocaleString('ar-EG')} كجم راجع حلاب معاد تدويره`
+                                }
                               >
-                                - {bRefusalKg} كجم راجع
+                                - {bRefusalKg} {isEn ? 'kg refusal' : 'كجم راجع'}
                               </span>
                             )}
                           </button>
@@ -454,7 +520,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
               {isEditingBatch ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="flex items-center gap-1">
-                    <span className="text-xs font-bold text-amber-200">الاسم:</span>
+                    <span className="text-xs font-bold text-amber-200">{isEn ? 'Name:' : 'الاسم:'}</span>
                     <input
                       type="text"
                       value={tempBatchName}
@@ -465,11 +531,11 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                       }}
                       autoFocus
                       className="px-3 py-1.5 bg-white text-slate-900 font-black rounded-lg text-sm border border-amber-400 focus:outline-none w-40"
-                      placeholder="اسم اللفة..."
+                      placeholder={isEn ? 'Batch name...' : 'اسم اللفة...'}
                     />
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-xs font-bold text-amber-200">التوقيت:</span>
+                    <span className="text-xs font-bold text-amber-200">{isEn ? 'Time:' : 'التوقيت:'}</span>
                     <input
                       type="text"
                       value={tempBatchTime}
@@ -479,23 +545,23 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                         if (e.key === 'Escape') setIsEditingBatch(false);
                       }}
                       className="px-3 py-1.5 bg-white text-slate-900 font-black rounded-lg text-sm border border-amber-400 focus:outline-none w-28"
-                      placeholder="مثلاً 08:30 ص"
+                      placeholder={isEn ? 'e.g. 08:30 AM' : 'مثلاً 08:30 ص'}
                     />
                   </div>
                   <button
                     type="button"
                     onClick={saveEditingBatch}
                     className="p-2 bg-amber-400 hover:bg-amber-500 text-emerald-950 font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 text-xs"
-                    title="حفظ التعديلات"
+                    title={isEn ? 'Save edits' : 'حفظ التعديلات'}
                   >
                     <Check className="w-4 h-4" />
-                    <span>حفظ</span>
+                    <span>{isEn ? 'Save' : 'حفظ'}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setIsEditingBatch(false)}
                     className="p-2 bg-emerald-800 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer text-xs"
-                    title="إلغاء"
+                    title={isEn ? 'Cancel' : 'إلغاء'}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -512,10 +578,10 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                     type="button"
                     onClick={startEditingBatch}
                     className="px-2.5 py-1 bg-emerald-800/80 hover:bg-emerald-700 text-amber-300 rounded-lg text-xs font-bold transition-all border border-emerald-700 flex items-center gap-1.5 cursor-pointer shadow-xs"
-                    title="تعديل اسم وتوقيت هذه اللفة"
+                    title={isEn ? 'Edit batch name and time' : 'تعديل اسم وتوقيت هذه اللفة'}
                   >
                     <Edit2 className="w-3.5 h-3.5" />
-                    <span>تعديل الاسم والتوقيت</span>
+                    <span>{isEn ? 'Edit Name & Time' : 'تعديل الاسم والتوقيت'}</span>
                   </button>
                 </div>
               )}
@@ -523,7 +589,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
 
             <div className="flex flex-wrap items-center gap-2">
               <div className="text-xs text-emerald-100 font-semibold flex items-center gap-2">
-                <span>الحالة:</span>
+                <span>{isEn ? 'Status:' : 'الحالة:'}</span>
                 <span className="bg-emerald-800 px-2.5 py-0.5 rounded-full border border-emerald-700 font-bold text-amber-300">
                   {activeBatch.status}
                 </span>
@@ -545,7 +611,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                       actualWeights
                     )
                   }
-                  label={`تصدير أمر اللفة (${activeBatch.batchNumber}) إكسيل`}
+                  label={isEn ? `Export (${activeBatch.batchNumber}) to Excel` : `تصدير أمر اللفة (${activeBatch.batchNumber}) إكسيل`}
                   variant="secondary"
                   size="sm"
                 />
@@ -554,23 +620,35 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
           </div>
 
           {/* Active Batch Summary Banner */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-800 text-xs font-bold">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 text-slate-800 text-xs font-bold">
             <div>
-              <span className="text-slate-500 block text-[11px]">الفئة المستهدفة:</span>
-              <span className="text-emerald-900 text-sm font-black">{category?.name}</span>
+              <span className="text-slate-500 block text-[11px]">{isEn ? 'Target Category:' : 'الفئة المستهدفة:'}</span>
+              <span className="text-emerald-900 text-sm font-black">{category ? getCategoryDisplayName(category.name, isEn) : (isEn ? 'General' : 'عام')}</span>
             </div>
             <div>
-              <span className="text-slate-500 block text-[11px]">تركيبة العليقة:</span>
-              <span className="text-slate-900 text-sm">{ration.name}</span>
+              <span className="text-slate-500 block text-[11px]">{isEn ? 'Ration Formulation:' : 'تركيبة العليقة:'}</span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-slate-900 text-sm">{getRationDisplayName(ration.name, isEn)}</span>
+                <span className="text-[10px] font-black text-blue-900 bg-blue-100/90 px-1.5 py-0.2 rounded border border-blue-300">
+                  {rationDmStats.dmPercent}% DM
+                </span>
+              </div>
             </div>
             <div>
-              <span className="text-slate-500 block text-[11px]">المكسر والوقت:</span>
-              <span className="text-slate-900">{mixer?.name} ({activeBatch.time})</span>
+              <span className="text-slate-500 block text-[11px]">{isEn ? 'Mixer & Time:' : 'المكسر والوقت:'}</span>
+              <span className="text-slate-900">{mixer ? getMixerDisplayName(mixer.name, isEn) : (isEn ? 'Mixer' : 'مكسر')} ({activeBatch.time})</span>
             </div>
-            <div className="text-left">
-              <span className="text-slate-500 block text-[11px]">وزن خامات المكسر المطلوب:</span>
+            <div>
+              <span className="text-slate-500 block text-[11px]">{isEn ? 'Mixer Feed Weight:' : 'وزن خامات المكسر المطلوب:'}</span>
               <span className="text-emerald-800 text-base font-black">
-                {effectiveTargetWeightKg.toLocaleString('ar-EG')} كجم
+                {effectiveTargetWeightKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}
+              </span>
+            </div>
+            <div className={`${isRtl ? 'text-left' : 'text-right'} bg-blue-50/70 p-2 rounded-lg border border-blue-200`}>
+              <span className="text-blue-900 block text-[10px] font-bold">{isEn ? 'Dry Matter in Batch:' : 'المادة الجافة المقررة للخلطة:'}</span>
+              <span className="text-blue-950 text-base font-black">
+                {batchDmKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')}{' '}
+                <span className="text-xs font-bold text-blue-700">{isEn ? 'kg DM' : 'كجم DM'}</span>
               </span>
             </div>
           </div>
@@ -584,19 +662,21 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                 </div>
                 <div className="space-y-1">
                   <div className="font-extrabold text-amber-950 text-sm flex items-center gap-2 flex-wrap">
-                    <span>توضيح تدوير راجع الحلاب في هذه اللفة:</span>
+                    <span>{isEn ? 'Milking Refusal Recycling in this Batch:' : 'توضيح تدوير راجع الحلاب في هذه اللفة:'}</span>
                     <span className="bg-white px-2.5 py-0.5 rounded-lg border border-amber-300 font-bold text-slate-700 text-xs">
-                      إجمالي استهلاك القطيع: <strong className="text-slate-900">{activeBatchGrossKg.toLocaleString('ar-EG')} كجم</strong>
+                      {isEn ? 'Gross Demand:' : 'إجمالي استهلاك القطيع:'} <strong className="text-slate-900">{activeBatchGrossKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}</strong>
                     </span>
                     <span className="bg-amber-200/80 px-2.5 py-0.5 rounded-lg border border-amber-400 font-bold text-amber-950 text-xs">
-                      راجع حلاب مخصوم: <strong>-{activeBatchRefusalKg.toLocaleString('ar-EG')} كجم</strong>
+                      {isEn ? 'Deducted Refusal:' : 'راجع حلاب مخصوم:'} <strong>-{activeBatchRefusalKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}</strong>
                     </span>
                     <span className="bg-emerald-100 px-2.5 py-0.5 rounded-lg border border-emerald-300 font-black text-emerald-950 text-xs">
-                      صافي خامات المكسر المطلوب صرفها: <strong>{effectiveTargetWeightKg.toLocaleString('ar-EG')} كجم</strong>
+                      {isEn ? 'Net Fresh Mixer Feed:' : 'صافي خامات المكسر المطلوب صرفها:'} <strong>{effectiveTargetWeightKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}</strong>
                     </span>
                   </div>
                   <p className="text-xs text-amber-800">
-                    💡 سبب الفرق: إجمالي المقرر للرؤوس هو <strong>{activeBatchGrossKg.toLocaleString('ar-EG')} كجم</strong>، وتم توفير <strong>{activeBatchRefusalKg.toLocaleString('ar-EG')} كجم</strong> من راجع الحلاب المحول والمعاد تدويره للقطيع، ولذلك خامات المكسر المطلوب صرفها من المخزن هي <strong>{effectiveTargetWeightKg.toLocaleString('ar-EG')} كجم</strong> فقط (مطابق 100% لمجموع جدول الخامات أدناه).
+                    {isEn
+                      ? `💡 Note: Gross requirement for herd is ${activeBatchGrossKg.toLocaleString()} kg. Recycled refusal of ${activeBatchRefusalKg.toLocaleString()} kg is deducted, leaving ${effectiveTargetWeightKg.toLocaleString()} kg fresh ingredients to be dispensed from warehouse.`
+                      : `💡 سبب الفرق: إجمالي المقرر للرؤوس هو ${activeBatchGrossKg.toLocaleString('ar-EG')} كجم، وتم توفير ${activeBatchRefusalKg.toLocaleString('ar-EG')} كجم من راجع الحلاب المحول والمعاد تدويره للقطيع، ولذلك خامات المكسر المطلوب صرفها من المخزن هي ${effectiveTargetWeightKg.toLocaleString('ar-EG')} كجم فقط (مطابق 100% لمجموع جدول الخامات أدناه).`}
                   </p>
                 </div>
               </div>
@@ -606,17 +686,19 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                   type="button"
                   onClick={() => handleToggleRefusalDeduction(false)}
                   className="px-3.5 py-2 bg-white hover:bg-amber-100 text-amber-900 border border-amber-400 rounded-xl font-bold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"
-                  title="إلغاء خصم راجع الحلاب وخلط كامل المقرر من الخامات الطازجة بالمكسر"
+                  title={isEn ? 'Cancel refusal deduction and prepare 100% fresh feed' : 'إلغاء خصم راجع الحلاب وخلط كامل المقرر من الخامات الطازجة بالمكسر'}
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-                  <span>خلط كامل الاحتياج ({activeBatchGrossKg.toLocaleString('ar-EG')} كجم) طازج</span>
+                  <span>{isEn ? `Mix full requirement (${activeBatchGrossKg.toLocaleString()} kg) fresh` : `خلط كامل الاحتياج (${activeBatchGrossKg.toLocaleString('ar-EG')} كجم) طازج`}</span>
                 </button>
               </div>
             </div>
           ) : activeBatchGrossKg > effectiveTargetWeightKg + 1 ? (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs flex items-center justify-between text-slate-700">
               <span className="font-semibold">
-                يتم حاليًا خلط كامل استهلاك القطيع ({effectiveTargetWeightKg.toLocaleString('ar-EG')} كجم) من خامات المخزن الطازجة بدون خصم راجع الحلاب.
+                {isEn
+                  ? `Currently mixing full herd requirement (${effectiveTargetWeightKg.toLocaleString()} kg) from fresh ingredients without refusal deduction.`
+                  : `يتم حاليًا خلط كامل استهلاك القطيع (${effectiveTargetWeightKg.toLocaleString('ar-EG')} كجم) من خامات المخزن الطازجة بدون خصم راجع الحلاب.`}
               </span>
               <button
                 type="button"
@@ -624,7 +706,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                 className="px-3 py-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-lg font-bold text-xs transition-colors cursor-pointer flex items-center gap-1"
               >
                 <RefreshCw className="w-3 h-3 text-amber-700" />
-                <span>تطبيق خصم راجع الحلاب</span>
+                <span>{isEn ? 'Apply Refusal Deduction' : 'تطبيق خصم راجع الحلاب'}</span>
               </button>
             </div>
           ) : null}
@@ -639,28 +721,32 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h4 className="font-black text-slate-900 text-sm">
-                      نمط المركز المسبق والشكاير (Pre-Mix Bags):
+                      {isEn ? 'Concentrate Premix & Bagging Mode (Pre-Mix Bags):' : 'نمط المركز المسبق والشكاير (Pre-Mix Bags):'}
                     </h4>
                     {usePremixMode ? (
                       <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-black px-2 py-0.5 rounded-md">
-                        مفعل (تجميع المركز في شكاير {bagWeightKg} كجم)
+                        {isEn ? `Active (Consolidated into ${bagWeightKg} kg bags)` : `مفعل (تجميع المركز في شكاير ${bagWeightKg} كجم)`}
                       </span>
                     ) : (
                       <span className="bg-slate-200 text-slate-700 text-[11px] font-bold px-2 py-0.5 rounded-md">
-                        تقليدي (وزن كل خامة مركزة منفصلة باللفة)
+                        {isEn ? 'Standard (Individual ingredient weighing)' : 'تقليدي (وزن كل خامة مركزة منفصلة باللفة)'}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-600 font-medium mt-0.5">
                     {usePremixMode
-                      ? `يقوم السيستم بتجميع كل خامات العلف المركز الجاف في بند واحد جاهز بالشكاير لسرعة التحميل، مع بقاء المواد الخشنة (السيلاج والدريس) للودر.`
-                      : `عرض خامات المركز الجافة مفككة ومحسوبة بالوزن الفردي لكل خامة.`}
+                      ? isEn
+                        ? 'The system bundles all dry concentrate ingredients into pre-packed bags for fast loading, while forages (silage, hay) remain for loader weighing.'
+                        : 'يقوم السيستم بتجميع كل خامات العلف المركز الجاف في بند واحد جاهز بالشكاير لسرعة التحميل، مع بقاء المواد الخشنة (السيلاج والدريس) للودر.'
+                      : isEn
+                      ? 'Display each concentrate ingredient separately with individual target weights.'
+                      : 'عرض خامات المركز الجافة مفككة ومحسوبة بالوزن الفردي لكل خامة.'}
                   </p>
                   {categoryStock && usePremixMode && (
                     <div className="mt-1.5 flex items-center gap-2 text-xs font-bold">
-                      <span className="text-slate-600">رصيد الشكاير الجاهزة بالمخزن:</span>
+                      <span className="text-slate-600">{isEn ? 'Available Bags in Inventory:' : 'رصيد الشكاير الجاهزة بالمخزن:'}</span>
                       <span className="text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-300">
-                        {categoryStock.totalBagsInStock} شكارة ({categoryStock.totalKgInStock.toLocaleString()} كجم)
+                        {categoryStock.totalBagsInStock} {isEn ? 'bags' : 'شكارة'} ({categoryStock.totalKgInStock.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'})
                       </span>
                       {setActiveTab && (
                         <button
@@ -668,7 +754,7 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                           onClick={() => setActiveTab('concentrate_premix')}
                           className="text-amber-800 hover:text-amber-900 underline font-bold cursor-pointer inline-flex items-center gap-0.5"
                         >
-                          <span>خلاطة المركز وتعبئة الشكاير</span>
+                          <span>{isEn ? 'Concentrate Premix View' : 'خلاطة المركز وتعبئة الشكاير'}</span>
                           <ArrowUpRight className="w-3 h-3" />
                         </button>
                       )}
@@ -688,28 +774,91 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                   }`}
                 >
                   <Sliders className="w-3.5 h-3.5" />
-                  <span>{usePremixMode ? 'التحويل للنمط التقليدي (خامات منفصلة)' : 'تفعيل نمط الشكاير والمركز المسبق'}</span>
+                  <span>{usePremixMode ? (isEn ? 'Switch to Standard Ingredients' : 'التحويل للنمط التقليدي (خامات منفصلة)') : (isEn ? 'Activate Premix Bags Mode' : 'تفعيل نمط الشكاير والمركز المسبق')}</span>
                 </button>
               </div>
             </div>
           )}
 
+          {/* Target Barns Assigned to this Mixer Batch */}
+          {activeBatch.allocations && activeBatch.allocations.length > 0 && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-black text-slate-800 border-b border-slate-200 pb-2">
+                <span className="flex items-center gap-1.5 text-emerald-950 font-extrabold text-sm">
+                  <Building className="w-4 h-4 text-emerald-700" />
+                  <span>{isEn ? `Target Barns for this Batch (${activeBatch.allocations.length} barns):` : `العنابر المخصصة لتفريغ هذه اللفة (${activeBatch.allocations.length} عنابر):`}</span>
+                </span>
+                <span className="text-slate-600 font-bold">
+                  {isEn ? 'Total Heads Benefiting:' : 'إجمالي الرؤوس المستفيدة:'} {activeBatch.allocations.reduce((sum, a) => {
+                    const b = barns.find((bn) => bn.id === a.barnId);
+                    return sum + (b?.headCount || 0);
+                  }, 0)} {isEn ? 'heads' : 'رأس'}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
+                {activeBatch.allocations.map((alloc, aIdx) => {
+                  const barn = barns.find((b) => b.id === alloc.barnId);
+                  const allocKg = getDerivedAllocationKg(alloc, barn, categories, rations, dailyPlan);
+                  const headShareKg = barn?.headCount ? Math.round((allocKg / barn.headCount) * 10) / 10 : 0;
+                  return (
+                    <div key={aIdx} className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-black text-slate-900 text-sm">
+                          {getBarnNumberDisplayName(barn?.number, isEn)}{barn?.name ? ` (${getBarnNameDisplayName(barn.name, isEn)})` : ''}
+                        </span>
+                        <span className="text-[11px] font-bold text-slate-500">{barn?.headCount} {isEn ? 'hd' : 'رأس'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-600 font-semibold">{isEn ? 'Assigned Weight:' : 'الوزن المخصص:'}</span>
+                        <strong className="text-emerald-900 font-black text-sm">{allocKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}</strong>
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100 pt-1">
+                        <span>{isEn ? 'Share of Batch:' : 'النسبة من اللفة:'} {alloc.allocatedPercent}%</span>
+                        <span>{isEn ? 'Per Head:' : 'نصيب الرأس:'} {headShareKg} {isEn ? 'kg' : 'كجم'}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Mixer Loading & Mixing Sequence Instructions */}
+          <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-950 border border-emerald-300 font-black rounded text-[11px]">
+                {isEn ? 'Mixer Loading Sequence:' : 'ترتيب إضافة الخامات بالمكسر:'}
+              </span>
+              <span className="font-semibold text-slate-800">
+                {isEn
+                  ? '(1) Silage & wet feeds first for chopping ➔ (2) Hay & Straw ➔ (3) Premix bags & minerals ➔ (4) Liquids if any.'
+                  : '(1) السيلاج والمواد الرطبة أولاً للفرم ➔ (2) الدريس والتبن ➔ (3) شكاير المركز والأملاح ➔ (4) السوائل إن وجدت.'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 font-bold text-amber-950 bg-amber-100/70 px-2.5 py-1 rounded-lg border border-amber-300 shrink-0 text-xs">
+              <Clock className="w-3.5 h-3.5 text-amber-700" />
+              <span>{isEn ? 'Suggested mixing duration: 10 - 15 min after loading' : 'زمن الخلط المقترح: 10 - 15 دقيقة بعد اكتمال التحميل'}</span>
+            </div>
+          </div>
+
           {/* Preparation Ingredient Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-right text-sm border border-slate-200 rounded-xl overflow-hidden">
+            <table className={`w-full ${isRtl ? 'text-right' : 'text-left'} text-sm border border-slate-200 rounded-xl overflow-hidden`}>
               <thead className="bg-slate-100 text-slate-700 font-bold text-xs border-b border-slate-200">
                 <tr>
-                  <th className="py-3.5 px-4 border-l border-slate-200">م</th>
-                  <th className="py-3.5 px-4 border-l border-slate-200">كود الخامة</th>
-                  <th className="py-3.5 px-4 border-l border-slate-200">اسم الخامة العلفية</th>
-                  <th className="py-3.5 px-4 border-l border-slate-200">نسبة الخامة بالعليقة (كجم/رأس)</th>
+                  <th className="py-3.5 px-4 border-l border-slate-200">#</th>
+                  <th className="py-3.5 px-4 border-l border-slate-200">{isEn ? 'Code' : 'كود الخامة'}</th>
+                  <th className="py-3.5 px-4 border-l border-slate-200">{isEn ? 'Feed Material Name' : 'اسم الخامة العلفية'}</th>
+                  <th className="py-3.5 px-4 border-l border-slate-200">{isEn ? 'Ration Ratio (kg/hd)' : 'نسبة الخامة بالعليقة (كجم/رأس)'}</th>
+                  <th className="py-3.5 px-4 border-l border-slate-200 text-blue-900 bg-blue-50/70 text-center">{isEn ? 'Dry Matter % (DM)' : 'المادة الجافة % (DM)'}</th>
+                  <th className="py-3.5 px-4 border-l border-slate-200 text-blue-900 bg-blue-50/70 text-center">{isEn ? 'Amount (kg DM)' : 'الكمية (كجم DM)'}</th>
                   <th className="py-3.5 px-4 border-l border-slate-200 text-emerald-950 bg-emerald-50">
-                    الكمية المطلوبة للفة (كجم)
+                    {isEn ? 'Target Batch Weight (kg)' : 'الكمية المطلوبة للفة (كجم)'}
                   </th>
                   <th className="py-3.5 px-4 border-l border-slate-200 print:table-cell">
-                    الكمية الفعلية المحملة (كجم)
+                    {isEn ? 'Actual Loaded Weight (kg)' : 'الكمية الفعلية المحملة (كجم)'}
                   </th>
-                  <th className="py-3.5 px-4 border-l border-slate-200">الفرق (كجم)</th>
+                  <th className="py-3.5 px-4 border-l border-slate-200">{isEn ? 'Difference (kg)' : 'الفرق (كجم)'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-medium text-slate-800">
@@ -731,13 +880,13 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                                   {item.name}
                                 </span>
                                 <span className="bg-amber-200/90 text-amber-950 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-400">
-                                  مسبق الخلط والتعبئة 📦
+                                  {isEn ? 'Pre-Mixed & Bagged 📦' : 'مسبق الخلط والتعبئة 📦'}
                                 </span>
                               </div>
                               <div className="flex items-center gap-3 text-xs">
                                 <span className="font-extrabold text-amber-950 bg-white px-2 py-0.5 rounded-md border border-amber-300">
-                                  سحب: <strong>{item.bagsCount} شكارة</strong> (زنة {item.bagWeightKg} كجم)
-                                  {item.looseKg ? ` + ${item.looseKg} كجم كسر` : ''}
+                                  {isEn ? 'Load:' : 'سحب:'} <strong>{item.bagsCount} {isEn ? 'bags' : 'شكارة'}</strong> ({isEn ? `wt ${item.bagWeightKg} kg` : `زنة ${item.bagWeightKg} كجم`})
+                                  {item.looseKg ? ` + ${item.looseKg} ${isEn ? 'kg loose' : 'كجم كسر'}` : ''}
                                 </span>
                                 {item.subIngredients && item.subIngredients.length > 0 && (
                                   <button
@@ -746,7 +895,11 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                                     className="text-emerald-800 hover:text-emerald-950 font-bold underline cursor-pointer inline-flex items-center gap-1 print:hidden"
                                   >
                                     <span>
-                                      {showSubIngredients ? 'إخفاء تفاصيل خامات المركز' : `عرض خامات المركز (${item.subIngredients.length} خامات)`}
+                                      {showSubIngredients
+                                        ? isEn ? 'Hide Premix Details' : 'إخفاء تفاصيل خامات المركز'
+                                        : isEn
+                                        ? `Show Premix Ingredients (${item.subIngredients.length})`
+                                        : `عرض خامات المركز (${item.subIngredients.length} خامات)`}
                                     </span>
                                     {showSubIngredients ? (
                                       <ChevronUp className="w-3 h-3" />
@@ -759,14 +912,20 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                             </div>
                           </td>
                           <td className="py-3.5 px-4 text-xs font-bold text-slate-600 border-l border-amber-200">
-                            {item.amountKgPerHead} كجم/رأس
+                            {item.amountKgPerHead} {isEn ? 'kg/hd' : 'كجم/رأس'}
+                          </td>
+                          <td className="py-3.5 px-4 text-center font-bold text-blue-900 border-l border-amber-200 bg-blue-50/40">
+                            90%
+                          </td>
+                          <td className="py-3.5 px-4 text-center font-black text-blue-950 border-l border-amber-200 bg-blue-50/40">
+                            {Math.round(item.requiredKg * 0.9 * 10) / 10} {isEn ? 'kg DM' : 'كجم DM'}
                           </td>
                           <td className="py-3.5 px-4 font-black text-amber-950 bg-amber-100/70 border-l border-amber-200 text-base">
                             <div className="font-black text-base">
-                              {item.requiredKg.toLocaleString('ar-EG')} كجم
+                              {item.requiredKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}
                             </div>
                             <div className="text-xs text-amber-800 font-bold">
-                              ({item.bagsCount} شكارة {item.bagWeightKg} كجم)
+                              ({item.bagsCount} {isEn ? 'bags' : 'شكارة'} {item.bagWeightKg} {isEn ? 'kg' : 'كجم'})
                             </div>
                           </td>
                           <td className="py-3.5 px-4 border-l border-amber-200">
@@ -784,38 +943,44 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                                 }
                                 className="w-28 px-3 py-1 bg-white border border-amber-400 rounded-lg font-black text-slate-900 text-center text-sm print:border-none print:bg-transparent print:w-auto"
                               />
-                              <span className="text-xs font-bold text-slate-600 print:hidden">كجم</span>
+                              <span className="text-xs font-bold text-slate-600 print:hidden">{isEn ? 'kg' : 'كجم'}</span>
                             </div>
                           </td>
                           <td className="py-3.5 px-4 border-l border-amber-200 font-bold text-xs">
                             {item.diffKg === 0 ? (
-                              <span className="text-emerald-700">مطابق (0)</span>
+                              <span className="text-emerald-700">{isEn ? 'Match (0)' : 'مطابق (0)'}</span>
                             ) : (item.diffKg || 0) > 0 ? (
-                              <span className="text-rose-600">زيادة +{item.diffKg} كجم</span>
+                              <span className="text-rose-600">{isEn ? `+${item.diffKg} kg excess` : `زيادة +${item.diffKg} كجم`}</span>
                             ) : (
-                              <span className="text-amber-600">نقص {item.diffKg} كجم</span>
+                              <span className="text-amber-600">{isEn ? `${item.diffKg} kg deficit` : `نقص ${item.diffKg} كجم`}</span>
                             )}
                           </td>
                         </tr>
 
                         {/* Expandable Sub-ingredients Breakdown */}
-                        {showSubIngredients && item.subIngredients && (
-                          <tr className="bg-slate-50/90 border-b-2 border-amber-200 print:hidden">
-                            <td colSpan={7} className="p-3">
+                        {item.subIngredients && item.subIngredients.length > 0 && (
+                          <tr className={`${showSubIngredients ? '' : 'hidden print:table-row'} bg-slate-50/90 border-b-2 border-amber-200`}>
+                            <td colSpan={9} className="p-3">
                               <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-2">
-                                <div className="text-xs font-black text-slate-700 flex items-center justify-between">
-                                  <span>تفاصيل الخامات المركزة المكونة لهذه الشكاير ({item.requiredKg.toLocaleString()} كجم مركز):</span>
-                                  <span className="text-slate-500 font-medium">تم خلطها مسبقاً وتعبئتها في الشكاير</span>
+                                <div className="text-xs font-black text-slate-800 flex items-center justify-between">
+                                  <span>
+                                    {isEn
+                                      ? `Premix Ingredients Breakdown (${item.requiredKg.toLocaleString()} kg concentrate):`
+                                      : `تفاصيل الخامات المركزة المكونة لهذه الشكاير (${item.requiredKg.toLocaleString('ar-EG')} كجم مركز):`}
+                                  </span>
+                                  <span className="text-slate-500 font-medium text-[11px]">
+                                    {isEn ? 'Premix ingredients pre-weighed and bagged' : 'مكونات الشكارة موزونة ومخلوطة'}
+                                  </span>
                                 </div>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 print:grid-cols-4">
                                   {item.subIngredients.map((sub, sIdx) => (
                                     <div key={sIdx} className="bg-slate-50 p-2 rounded-lg border border-slate-200 text-xs">
-                                      <div className="font-black text-slate-900 truncate">{sub.name}</div>
+                                      <div className="font-black text-slate-900 truncate">{getMaterialDisplayName(sub.name, isEn)}</div>
                                       <div className="text-slate-500 text-[11px]">
-                                        النسبة: <strong>{sub.sharePercent}%</strong>
+                                        {isEn ? 'Ratio:' : 'النسبة:'} <strong>{sub.sharePercent}%</strong>
                                       </div>
                                       <div className="text-emerald-800 font-black text-[11px]">
-                                        الوزن باللفة: {sub.requiredKg.toLocaleString()} كجم
+                                        {isEn ? 'Batch Weight:' : 'الوزن باللفة:'} {sub.requiredKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}
                                       </div>
                                     </div>
                                   ))}
@@ -838,13 +1003,19 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                         {item.code}
                       </td>
                       <td className="py-3 px-4 font-black text-slate-900 border-l border-slate-200">
-                        {item.name}
+                        {getMaterialDisplayName(item.name, isEn)}
                       </td>
                       <td className="py-3 px-4 text-xs font-bold text-slate-600 border-l border-slate-200">
-                        {item.amountKgPerHead} كجم/رأس
+                        {item.amountKgPerHead} {isEn ? 'kg/hd' : 'كجم/رأس'}
+                      </td>
+                      <td className="py-3 px-4 text-center font-bold text-blue-900 border-l border-slate-200 bg-blue-50/20">
+                        {getRawMaterialDryMatterPercent(rawMaterials.find((rm) => rm.id === item.rawMaterialId))}%
+                      </td>
+                      <td className="py-3 px-4 text-center font-black text-blue-950 border-l border-slate-200 bg-blue-50/20">
+                        {(Math.round(item.requiredKg * (getRawMaterialDryMatterPercent(rawMaterials.find((rm) => rm.id === item.rawMaterialId)) / 100) * 10) / 10).toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg DM' : 'كجم DM'}
                       </td>
                       <td className="py-3 px-4 font-extrabold text-emerald-900 bg-emerald-50/60 border-l border-slate-200 text-base">
-                        {item.requiredKg.toLocaleString('ar-EG')} {item.unit}
+                        {item.requiredKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn && item.unit === 'كجم' ? 'kg' : item.unit}
                       </td>
                       <td className="py-3 px-4 border-l border-slate-200">
                         <div className="flex items-center gap-1">
@@ -858,16 +1029,18 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
                             }
                             className="w-28 px-3 py-1 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-900 text-center text-sm print:border-none print:bg-transparent print:w-auto"
                           />
-                          <span className="text-xs font-bold text-slate-500 print:hidden">{item.unit}</span>
+                          <span className="text-xs font-bold text-slate-500 print:hidden">
+                            {isEn && item.unit === 'كجم' ? 'kg' : item.unit}
+                          </span>
                         </div>
                       </td>
                       <td className="py-3 px-4 border-l border-slate-200 font-bold text-xs">
                         {item.diffKg === 0 ? (
-                          <span className="text-emerald-600">مطابق (0)</span>
+                          <span className="text-emerald-600">{isEn ? 'Match (0)' : 'مطابق (0)'}</span>
                         ) : (item.diffKg || 0) > 0 ? (
-                          <span className="text-rose-600">زيادة +{item.diffKg} كجم</span>
+                          <span className="text-rose-600">{isEn ? `+${item.diffKg} kg excess` : `زيادة +${item.diffKg} كجم`}</span>
                         ) : (
-                          <span className="text-amber-600">نقص {item.diffKg} كجم</span>
+                          <span className="text-amber-600">{isEn ? `${item.diffKg} kg deficit` : `نقص ${item.diffKg} كجم`}</span>
                         )}
                       </td>
                     </tr>
@@ -876,21 +1049,27 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
               </tbody>
               <tfoot className="bg-slate-100 font-black text-slate-900 text-sm border-t-2 border-slate-300">
                 <tr>
-                  <td colSpan={4} className="py-4 px-4 text-left border-l border-slate-200">
-                    إجمالي وزن خلطة المكسر:
+                  <td colSpan={4} className={`py-4 px-4 ${isRtl ? 'text-left' : 'text-right'} border-l border-slate-200`}>
+                    {isEn ? 'Total Mixer Batch Weight:' : 'إجمالي وزن خلطة المكسر:'}
+                  </td>
+                  <td className="py-4 px-4 text-center font-black text-blue-900 bg-blue-100/60 border-l border-slate-200">
+                    {rationDmStats.dmPercent}% DM
+                  </td>
+                  <td className="py-4 px-4 text-center font-black text-blue-950 bg-blue-100/60 border-l border-slate-200">
+                    {batchDmKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg DM' : 'كجم DM'}
                   </td>
                   <td className="py-4 px-4 text-emerald-900 font-black text-lg bg-emerald-100/80 border-l border-slate-200">
-                    {totalRequiredKg.toLocaleString('ar-EG')} كجم
+                    {totalRequiredKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}
                   </td>
                   <td className="py-4 px-4 text-slate-900 font-black text-lg border-l border-slate-200">
-                    {totalActualKg.toLocaleString('ar-EG')} كجم
+                    {totalActualKg.toLocaleString(isEn ? 'en-US' : 'ar-EG')} {isEn ? 'kg' : 'كجم'}
                   </td>
                   <td className="py-4 px-4 text-xs font-bold">
                     {Math.abs(totalDiffKg) <= 0.01 ? (
-                      <span className="text-emerald-700">✓ مطابق بالكامل</span>
+                      <span className="text-emerald-700">{isEn ? '✓ Fully Matched' : '✓ مطابق بالكامل'}</span>
                     ) : (
                       <span className={totalDiffKg > 0 ? 'text-rose-700' : 'text-amber-700'}>
-                        الفرق الإجمالي: {totalDiffKg} كجم
+                        {isEn ? `Total Diff: ${totalDiffKg} kg` : `الفرق الإجمالي: ${totalDiffKg} كجم`}
                       </span>
                     )}
                   </td>
@@ -900,11 +1079,29 @@ export const PreparationOrdersView: React.FC<PreparationOrdersViewProps> = ({
           </div>
 
           {/* Formal Print Signatures */}
-          <PrintSignatures settings={settings} />
+          <PrintSignatures
+            settings={settings}
+            signatures={[
+              {
+                title: isEn ? 'Warehouse Material Dispenser' : 'مسؤول صرف خامات المخزن',
+                name: settings?.warehouseManagerName || (isEn ? 'Warehouse Manager' : 'أمين المستودع'),
+              },
+              {
+                title: isEn ? 'Mixer Wagon Driver / Operator' : 'سائق ومسؤول خلط المكسر',
+                name: settings?.driverName || (isEn ? 'TMR Driver' : 'سائق المكسر'),
+              },
+              {
+                title: isEn ? 'Nutrition Engineer Approval' : 'اعتماد مهندس التغذية',
+                name: settings?.engineerName || (isEn ? 'Nutrition Engineer' : 'مهندس التغذية'),
+              },
+            ]}
+          />
         </div>
       ) : (
         <div className="bg-white p-8 rounded-2xl text-center text-slate-400">
-          لا يملك هذا المكسر عليقة محددة أو لا توجد لفات مخصصة.
+          {isEn
+            ? 'This mixer has no specific ration or there are no batches allocated.'
+            : 'لا يملك هذا المكسر عليقة محددة أو لا توجد لفات مخصصة.'}
         </div>
       )}
     </div>

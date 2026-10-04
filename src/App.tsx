@@ -4,7 +4,16 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ActiveTab, DailyOperationPlan, FarmSettings } from './types';
+import {
+  ActiveTab,
+  DailyOperationPlan,
+  FarmSettings,
+  RawMaterial,
+  Ration,
+  AnimalCategory,
+  Barn,
+  Mixer,
+} from './types';
 import {
   loadRawMaterials,
   saveRawMaterials,
@@ -30,6 +39,7 @@ import { Header } from './components/Header';
 
 import { DashboardView } from './components/views/DashboardView';
 import { DailyPlanView } from './components/views/DailyPlanView';
+import { FarmEconomicsView } from './components/views/FarmEconomicsView';
 import { ConcentratePremixView } from './components/views/ConcentratePremixView';
 import { BatchDistributionView } from './components/views/BatchDistributionView';
 import { PreparationOrdersView } from './components/views/PreparationOrdersView';
@@ -44,6 +54,7 @@ import { CategoriesView } from './components/views/CategoriesView';
 import { BarnsView } from './components/views/BarnsView';
 import { MixersView } from './components/views/MixersView';
 import { SettingsView } from './components/views/SettingsView';
+import { DeveloperContactView } from './components/views/DeveloperContactView';
 import {
   exportRawMaterialsToExcel,
   exportRationsToExcel,
@@ -57,12 +68,20 @@ import {
   exportConcentratePremixToExcel,
   exportNutritionReportToExcel,
   exportFullFarmWorkbookToExcel,
+  exportFarmEconomicsToExcel,
 } from './utils/excelExport';
+import { calculateWholeFarmEconomics } from './utils/calculations';
 import { FeedbackProvider, notify } from './context/FeedbackContext';
+import { useLanguage } from './context/LanguageContext';
+import { PrintPreviewModal, ReportType } from './components/modals/PrintPreviewModal';
+import { InitialSetupModal } from './components/modals/InitialSetupModal';
+import { AppLanguage } from './types';
+import { checkAndTriggerAutoBackup } from './services/backupService';
 
 const VALID_TABS: ActiveTab[] = [
   'dashboard',
   'daily_plan',
+  'farm_economics',
   'concentrate_premix',
   'distributions',
   'prep_orders',
@@ -76,6 +95,7 @@ const VALID_TABS: ActiveTab[] = [
   'barns',
   'mixers',
   'settings',
+  'developer_contact',
 ];
 
 function getInitialTab(): ActiveTab {
@@ -89,8 +109,47 @@ function getInitialTab(): ActiveTab {
 }
 
 export default function App() {
+  const { language, setLanguage, isRtl, t } = useLanguage();
   const [activeTab, setActiveTabState] = useState<ActiveTab>(getInitialTab);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('farm_sidebar_open');
+      if (saved !== null) {
+        return saved === 'true';
+      }
+      return window.innerWidth >= 1024;
+    }
+    return true;
+  });
+
+  const toggleSidebar = () => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('farm_sidebar_open', String(next));
+      }
+      return next;
+    });
+  };
+
+  const closeSidebar = () => {
+    setIsSidebarOpen(false);
+    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+      localStorage.setItem('farm_sidebar_open', 'false');
+    }
+  };
+
+  // Keyboard shortcut: Ctrl + B or Cmd + B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const setActiveTab = (tab: ActiveTab) => {
     setActiveTabState(tab);
@@ -117,11 +176,26 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
 
   // Core Data States
-  const [rawMaterials, setRawMaterialsState] = useState(loadRawMaterials);
-  const [rations, setRationsState] = useState(loadRations);
-  const [categories, setCategoriesState] = useState(loadCategories);
-  const [barns, setBarnsState] = useState(loadBarns);
-  const [mixers, setMixersState] = useState(loadMixers);
+  const [rawMaterials, setRawMaterialsState] = useState<RawMaterial[]>(() => {
+    const loaded = loadRawMaterials();
+    return Array.isArray(loaded) ? loaded : [];
+  });
+  const [rations, setRationsState] = useState<Ration[]>(() => {
+    const loaded = loadRations();
+    return Array.isArray(loaded) ? loaded : [];
+  });
+  const [categories, setCategoriesState] = useState<AnimalCategory[]>(() => {
+    const loaded = loadCategories();
+    return Array.isArray(loaded) ? loaded : [];
+  });
+  const [barns, setBarnsState] = useState<Barn[]>(() => {
+    const loaded = loadBarns();
+    return Array.isArray(loaded) ? loaded : [];
+  });
+  const [mixers, setMixersState] = useState<Mixer[]>(() => {
+    const loaded = loadMixers();
+    return Array.isArray(loaded) ? loaded : [];
+  });
   const [settings, setSettingsState] = useState<FarmSettings>(loadSettings);
 
   // Daily Operation Plan State for the selectedDate
@@ -162,35 +236,96 @@ export default function App() {
     }
   }, [settings.hasConcentrateMixer, activeTab]);
 
+  // Sync settings language with LanguageContext
+  useEffect(() => {
+    if (settings.language && settings.language !== language) {
+      setLanguage(settings.language);
+    }
+  }, [settings.language]);
+
+  // Automatic Backup Periodic Trigger
+  useEffect(() => {
+    try {
+      const res = checkAndTriggerAutoBackup();
+      if (res.ran && res.snapshot) {
+        notify(
+          language === 'en'
+            ? `Automatic backup saved (${res.snapshot.dataSizeKb} KB)`
+            : `تم حفظ نسخة احتياطية تلقائية للنظام (${res.snapshot.dataSizeKb} ك.ب)`,
+          'info'
+        );
+      }
+    } catch (e) {
+      console.error('Auto backup check error:', e);
+    }
+  }, [language]);
+
   // Setters with persistent storage
   const updateRawMaterials = (items: typeof rawMaterials) => {
-    setRawMaterialsState(items);
-    saveRawMaterials(items);
+    const safe = Array.isArray(items) ? items : [];
+    setRawMaterialsState(safe);
+    saveRawMaterials(safe);
   };
 
   const updateRations = (items: typeof rations) => {
-    setRationsState(items);
-    saveRations(items);
+    const safe = Array.isArray(items) ? items : [];
+    setRationsState(safe);
+    saveRations(safe);
   };
 
   const updateCategories = (items: typeof categories) => {
-    setCategoriesState(items);
-    saveCategories(items);
+    const safe = Array.isArray(items) ? items : [];
+    setCategoriesState(safe);
+    saveCategories(safe);
   };
 
   const updateBarns = (items: typeof barns) => {
-    setBarnsState(items);
-    saveBarns(items);
+    const safe = Array.isArray(items) ? items : [];
+    setBarnsState(safe);
+    saveBarns(safe);
   };
 
   const updateMixers = (items: typeof mixers) => {
-    setMixersState(items);
-    saveMixers(items);
+    const safe = Array.isArray(items) ? items : [];
+    setMixersState(safe);
+    saveMixers(safe);
   };
 
   const updateSettings = (newSettings: FarmSettings) => {
     setSettingsState(newSettings);
     saveSettings(newSettings);
+    if (newSettings.language && newSettings.language !== language) {
+      setLanguage(newSettings.language);
+    }
+
+    // Sync today's active dailyPlan with new default prices if it was relying on default prices or unset
+    const prevDefaultMilk = settings.defaultMilkPricePerKg ?? 20.0;
+    const currentPlanMilk = dailyPlan.milkProduction?.milkPricePerKg;
+    const prevDefaultMeat = settings.defaultMeatPricePerKg ?? 175.0;
+    const currentPlanMeat = dailyPlan.fatteningMeatPricePerKg;
+
+    const shouldUpdateMilk = currentPlanMilk === undefined || currentPlanMilk === prevDefaultMilk;
+    const shouldUpdateMeat = currentPlanMeat === undefined || currentPlanMeat === prevDefaultMeat;
+
+    if (shouldUpdateMilk || shouldUpdateMeat) {
+      const updatedPlan: DailyOperationPlan = {
+        ...dailyPlan,
+        fatteningMeatPricePerKg: shouldUpdateMeat
+          ? newSettings.defaultMeatPricePerKg
+          : currentPlanMeat,
+        milkProduction: {
+          sessions: dailyPlan.milkProduction?.sessions || [],
+          refusalPercent: dailyPlan.milkProduction?.refusalPercent ?? 5,
+          milkPricePerKg: shouldUpdateMilk
+            ? newSettings.defaultMilkPricePerKg
+            : currentPlanMilk,
+          milkingHeadCount: dailyPlan.milkProduction?.milkingHeadCount,
+          notes: dailyPlan.milkProduction?.notes,
+        },
+      };
+      setDailyPlanState(updatedPlan);
+      saveDailyPlan(updatedPlan);
+    }
   };
 
   const updateDailyPlan = (plan: DailyOperationPlan) => {
@@ -198,8 +333,37 @@ export default function App() {
     saveDailyPlan(plan);
   };
 
-  const handleResetDemoScenario = () => {
-    resetAllDataToDemo();
+  const [isInitialSetupOpen, setIsInitialSetupOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const installed = localStorage.getItem('farm_feed_installed');
+      return installed !== 'true';
+    }
+    return false;
+  });
+
+  const handleCompleteInitialSetup = (lang: AppLanguage, custom: Partial<FarmSettings>) => {
+    localStorage.setItem('farm_feed_installed', 'true');
+    resetAllDataToDemo(lang, custom);
+    setLanguage(lang);
+    setSettingsState(loadSettings());
+    setRawMaterialsState(loadRawMaterials());
+    setRationsState(loadRations());
+    setCategoriesState(loadCategories());
+    setBarnsState(loadBarns());
+    setMixersState(loadMixers());
+    setDailyPlanState(loadDailyPlan(selectedDate));
+    setIsInitialSetupOpen(false);
+    notify(
+      lang === 'en'
+        ? 'System setup completed successfully!'
+        : 'تم إتمام تهيئة النظام وتثبيت البيانات بنجاح!',
+      'success'
+    );
+  };
+
+  const handleResetDemoScenario = (overrideLanguage?: AppLanguage) => {
+    const targetLang = overrideLanguage || settings.language || language || 'ar';
+    resetAllDataToDemo(targetLang);
     setRawMaterialsState(loadRawMaterials());
     setRationsState(loadRations());
     setCategoriesState(loadCategories());
@@ -207,7 +371,82 @@ export default function App() {
     setMixersState(loadMixers());
     setSettingsState(loadSettings());
     setDailyPlanState(loadDailyPlan(selectedDate));
-    notify('تمت إعادة تحميل السيناريو التجريبي بنجاح!', 'success');
+    if (targetLang !== language) {
+      setLanguage(targetLang);
+    }
+    notify(
+      targetLang === 'en'
+        ? 'Demo scenario reset successfully in English!'
+        : 'تمت إعادة تحميل السيناريو التجريبي بنجاح!',
+      'success'
+    );
+  };
+
+  // Print Preview Mode State & Handlers
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [previewReportType, setPreviewReportType] = useState<ReportType>('prep_orders');
+  const [previewBatchId, setPreviewBatchId] = useState<string | undefined>(undefined);
+  const [previewPremixCategory, setPreviewPremixCategory] = useState<string | undefined>(undefined);
+  const [previewPremixWeight, setPreviewPremixWeight] = useState<number | undefined>(undefined);
+  const [previewPlanOverride, setPreviewPlanOverride] = useState<DailyOperationPlan | undefined>(undefined);
+
+  const handleOpenPrintPreview = (
+    customType?: ReportType,
+    customBatchId?: string,
+    customPremixCatId?: string,
+    customPremixWeight?: number,
+    customPlan?: DailyOperationPlan
+  ) => {
+    if (customPlan) {
+      setPreviewPlanOverride(customPlan);
+    } else {
+      setPreviewPlanOverride(undefined);
+    }
+    if (customBatchId) {
+      setSelectedBatchForOrder(customBatchId);
+      setPreviewBatchId(customBatchId);
+    } else {
+      setPreviewBatchId(selectedBatchForOrder || 'ALL');
+    }
+    if (customPremixCatId) {
+      setPreviewPremixCategory(customPremixCatId);
+    }
+    if (customPremixWeight) {
+      setPreviewPremixWeight(customPremixWeight);
+    }
+    if (customType) {
+      setPreviewReportType(customType);
+    } else {
+      switch (activeTab) {
+        case 'prep_orders':
+          setPreviewReportType('prep_orders');
+          break;
+        case 'driver_sheet':
+          setPreviewReportType('driver_sheet');
+          break;
+        case 'reports':
+          setPreviewReportType('nutrition_report');
+          break;
+        case 'warehouse':
+          setPreviewReportType('warehouse');
+          break;
+        case 'concentrate_premix':
+          setPreviewReportType('concentrate_premix');
+          break;
+        case 'farm_economics':
+          setPreviewReportType('farm_economics');
+          break;
+        case 'daily_plan':
+          setPreviewReportType('daily_plan');
+          break;
+        case 'history':
+          setPreviewReportType('daily_log');
+          break;
+        default:
+          setPreviewReportType('prep_orders');
+      }
+    }
+    setIsPrintPreviewOpen(true);
   };
 
   const handlePrint = () => {
@@ -221,12 +460,64 @@ export default function App() {
   };
 
   // Helper titles
-  const getTabTitle = (tab: ActiveTab): { title: string; subtitle: string } => {
+  const getTabTitle = (tab: ActiveTab, lang: string = 'ar'): { title: string; subtitle: string } => {
+    if (lang === 'en') {
+      switch (tab) {
+        case 'dashboard':
+          return { title: 'Dashboard - Feeding Overview', subtitle: 'Real-time overview of daily farm feeding demands, mixer batches, and herd alerts' };
+        case 'daily_plan':
+          return { title: 'Daily Operation Plan - Mixer Batches', subtitle: 'Plan and coordinate mixer batch weights, sequence, and feeding timings' };
+        case 'farm_economics':
+          return {
+            title: 'Farm Economics & IOFC',
+            subtitle: 'Category feed cost, gross herd revenue, and daily feeding profitability indicators',
+          };
+        case 'concentrate_premix':
+          return {
+            title: 'Concentrate Mixer & Bagging',
+            subtitle: 'Pre-mix concentrate batches (0.5t, 1t, 2t) and bag allocations for mixers',
+          };
+        case 'distributions':
+          return { title: 'Barn Batch Allocations & Verification', subtitle: 'Assign mixed feed from each batch to target barns with cross-validation' };
+        case 'prep_orders':
+          return { title: 'Mixer Preparation & Loading Orders', subtitle: 'Accurate proportioning of raw ingredients per batch and mixer loading records' };
+        case 'driver_sheet':
+          return { title: 'Driver Feeding Sheet', subtitle: 'Discharge and distribution schedule for TMR mixer driver and tractor operator' };
+        case 'warehouse':
+          return { title: 'Warehouse Daily Requirements', subtitle: 'Consolidated raw ingredient withdrawal ledger from the central feed store' };
+        case 'reports':
+          return { title: 'Comprehensive Nutrition Report', subtitle: 'Technical nutritionist report tracking herd feed intake and rates' };
+        case 'history':
+          return { title: 'Daily Log & Historical Archives', subtitle: 'Review historical daily plans, records, and past execution logs' };
+        case 'raw_materials':
+          return { title: 'Raw Materials Database', subtitle: 'Manage feed ingredients, dry matter %, prices, and inventory status' };
+        case 'rations':
+          return { title: 'Ration Formulations (kg/head)', subtitle: 'Define ingredient proportions per head per day as fed and dry matter' };
+        case 'categories':
+          return { title: 'Animal Categories', subtitle: 'Manage animal groups, linked rations, target production, and assigned mixers' };
+        case 'barns':
+          return { title: 'Barns & Pens', subtitle: 'Manage head counts, baseline feeding kg, and intake percentage adjustments' };
+        case 'mixers':
+          return { title: 'TMR Feed Mixers', subtitle: 'Manage mixer wagons, physical capacity limits, and operational status' };
+        case 'settings':
+          return { title: 'System Settings & Maintenance', subtitle: 'Configure project info, language, currency, and data backups' };
+        case 'developer_contact':
+          return { title: 'Developer & Contact', subtitle: 'Ownership certificate, technical engineering by Eng. Hazem Amer' };
+        default:
+          return { title: 'Livestock Feeding System', subtitle: 'Integrated feed and ration management software' };
+      }
+    }
+
     switch (tab) {
       case 'dashboard':
         return { title: 'الرئيسية - لوحة متابعة التغذية', subtitle: 'نظرة عامة على الاحتياجات اليومية وتوزيع المكسر بالمزرعة' };
       case 'daily_plan':
         return { title: 'خطة التشغيل اليومية - لفات المكسر', subtitle: 'تخطيط وتنسيق أوزان وتوقيتات لفات المكسر لليوم' };
+      case 'farm_economics':
+        return {
+          title: 'اقتصاديات المزرعة و IOFC',
+          subtitle: 'تحليل تكلفة كل فئة والعائد بعد تغذية الكل ومؤشرات ربحية التغذية اليومية',
+        };
       case 'concentrate_premix':
         return {
           title: 'خلاطة العلف المركز وتعبئة الشكاير',
@@ -256,10 +547,17 @@ export default function App() {
         return { title: 'مكسرات العلف (TMR)', subtitle: 'إدارة الخلاطات والسعة القصوى بالوزن' };
       case 'settings':
         return { title: 'إعدادات النظام والنسخ الاحتياطي', subtitle: 'ضبط بيانات المزرعة، التصدير، وتحميل السيناريو التجريبي' };
+      case 'developer_contact':
+        return { title: 'المطور والتواصل', subtitle: 'شهادة إثبات الملكية وتطوير النظام وقنوات التواصل المباشر مع المهندس حازم عامر' };
+      default:
+        return { title: 'إدارة تغذية المزرعة', subtitle: 'نظام إدارة وتخطيط الأعلاف المتكامل' };
     }
   };
 
-  const currentTabMeta = getTabTitle(activeTab);
+  const currentTabMeta = getTabTitle(activeTab, language) || {
+    title: language === 'en' ? 'Livestock Feeding System' : 'إدارة تغذية المزرعة',
+    subtitle: language === 'en' ? 'Integrated feed and ration management software' : 'نظام إدارة وتخطيط الأعلاف المتكامل',
+  };
 
   const handleExportActiveTabToExcel = () => {
     switch (activeTab) {
@@ -274,6 +572,22 @@ export default function App() {
           settings,
         });
         break;
+      case 'farm_economics': {
+        const summary = calculateWholeFarmEconomics(
+          categories,
+          barns,
+          rations,
+          rawMaterials,
+          dailyPlan,
+          {
+            milkPricePerKg: dailyPlan.milkProduction?.milkPricePerKg ?? settings.defaultMilkPricePerKg ?? 20.0,
+            liveMeatPricePerKg: dailyPlan.fatteningMeatPricePerKg ?? settings.defaultMeatPricePerKg ?? 175.0,
+            fatteningAdgKg: dailyPlan.fatteningAdgKg ?? 1.5,
+          }
+        );
+        exportFarmEconomicsToExcel(summary, settings.farmName, dailyPlan.date, settings.currency);
+        break;
+      }
       case 'daily_plan':
       case 'distributions':
         exportDailyPlanToExcel(dailyPlan, categories, mixers, rations, barns);
@@ -337,26 +651,36 @@ export default function App() {
 
   return (
     <FeedbackProvider>
-      <div className="min-h-screen bg-slate-100/90 font-sans text-slate-900 antialiased dir-rtl flex" dir="rtl">
+      <div className={`min-h-screen bg-slate-100/90 font-sans text-slate-900 antialiased flex ${isRtl ? 'dir-rtl' : 'dir-ltr'}`} dir={isRtl ? 'rtl' : 'ltr'}>
         {/* Sidebar Navigation */}
         <Sidebar
           activeTab={activeTab}
           setActiveTab={setActiveTab}
           isOpen={isSidebarOpen}
-          onClose={() => setIsSidebarOpen(false)}
+          onClose={closeSidebar}
           farmName={settings.farmName}
           hasConcentrateMixer={settings.hasConcentrateMixer !== false}
         />
 
         {/* Main Content Area */}
-        <div className="flex-1 lg:mr-72 min-w-0 flex flex-col min-h-screen">
+        <div
+          className={`flex-1 min-w-0 flex flex-col min-h-screen transition-[margin] duration-300 ease-in-out ${
+            isSidebarOpen
+              ? isRtl
+                ? 'lg:mr-72 lg:ml-0'
+                : 'lg:ml-72 lg:mr-0'
+              : 'lg:mr-0 lg:ml-0'
+          }`}
+        >
           <Header
             title={currentTabMeta.title}
             subtitle={currentTabMeta.subtitle}
             selectedDate={selectedDate}
             setSelectedDate={setSelectedDate}
-            onOpenMobileMenu={() => setIsSidebarOpen(true)}
+            onToggleSidebar={toggleSidebar}
+            isSidebarOpen={isSidebarOpen}
             onPrint={handlePrint}
+            onOpenPrintPreview={() => handleOpenPrintPreview()}
             onExportExcel={handleExportActiveTabToExcel}
           />
 
@@ -370,6 +694,7 @@ export default function App() {
                 mixers={mixers}
                 rations={rations}
                 rawMaterials={rawMaterials}
+                settings={settings}
                 setActiveTab={setActiveTab}
                 onSelectBatchForOrder={(bId) => setSelectedBatchForOrder(bId)}
               />
@@ -385,6 +710,24 @@ export default function App() {
                 setBarns={updateBarns}
                 rations={rations}
                 rawMaterials={rawMaterials}
+                settings={settings}
+                onPrint={handlePrint}
+                onOpenPrintPreview={() => handleOpenPrintPreview('prep_orders')}
+              />
+            )}
+
+            {activeTab === 'farm_economics' && (
+              <FarmEconomicsView
+                dailyPlan={dailyPlan}
+                setDailyPlan={updateDailyPlan}
+                categories={categories}
+                barns={barns}
+                rations={rations}
+                rawMaterials={rawMaterials}
+                settings={settings}
+                setActiveTab={setActiveTab}
+                onPrint={handlePrint}
+                onOpenPrintPreview={() => handleOpenPrintPreview('farm_economics')}
               />
             )}
 
@@ -400,6 +743,9 @@ export default function App() {
                 barns={barns}
                 setActiveTab={setActiveTab}
                 onPrint={handlePrint}
+                onOpenPrintPreview={(catId, weightKg) =>
+                  handleOpenPrintPreview('concentrate_premix', undefined, catId, weightKg)
+                }
               />
             )}
 
@@ -430,6 +776,9 @@ export default function App() {
                 initialBatchId={selectedBatchForOrder}
                 setActiveTab={setActiveTab}
                 onPrint={handlePrint}
+                onOpenPrintPreview={(bId) =>
+                  handleOpenPrintPreview('prep_orders', bId || selectedBatchForOrder)
+                }
               />
             )}
 
@@ -443,6 +792,7 @@ export default function App() {
                 rations={rations}
                 settings={settings}
                 onPrint={handlePrint}
+                onOpenPrintPreview={() => handleOpenPrintPreview('driver_sheet')}
               />
             )}
 
@@ -457,6 +807,7 @@ export default function App() {
                 settings={settings}
                 barns={barns}
                 onPrint={handlePrint}
+                onOpenPrintPreview={() => handleOpenPrintPreview('warehouse')}
               />
             )}
 
@@ -471,6 +822,7 @@ export default function App() {
                 rawMaterials={rawMaterials}
                 settings={settings}
                 onPrint={handlePrint}
+                onOpenPrintPreview={() => handleOpenPrintPreview('nutrition_report')}
               />
             )}
 
@@ -484,6 +836,10 @@ export default function App() {
                 rations={rations}
                 rawMaterials={rawMaterials}
                 settings={settings}
+                onPrint={handlePrint}
+                onOpenPrintPreview={(plan) =>
+                  handleOpenPrintPreview('daily_log', undefined, undefined, undefined, plan)
+                }
               />
             )}
 
@@ -492,6 +848,7 @@ export default function App() {
                 rawMaterials={rawMaterials}
                 setRawMaterials={updateRawMaterials}
                 rations={rations}
+                settings={settings}
               />
             )}
 
@@ -537,8 +894,35 @@ export default function App() {
                 onResetDemo={handleResetDemoScenario}
               />
             )}
+
+            {activeTab === 'developer_contact' && (
+              <DeveloperContactView />
+            )}
           </main>
         </div>
+
+        {/* Global Print Preview Modal (معاينة وطباعة التقارير الرسمية) */}
+        <PrintPreviewModal
+          isOpen={isPrintPreviewOpen}
+          onClose={() => setIsPrintPreviewOpen(false)}
+          defaultReportType={previewReportType}
+          dailyPlan={dailyPlan}
+          categories={categories}
+          barns={barns}
+          mixers={mixers}
+          rations={rations}
+          rawMaterials={rawMaterials}
+          settings={settings}
+          initialBatchId={previewBatchId || selectedBatchForOrder || 'ALL'}
+          initialPremixCategoryId={previewPremixCategory}
+          initialPremixWeightKg={previewPremixWeight}
+          planOverride={previewPlanOverride}
+        />
+        {/* Initial Setup Wizard for First-Time Run */}
+        <InitialSetupModal
+          isOpen={isInitialSetupOpen}
+          onComplete={handleCompleteInitialSetup}
+        />
       </div>
     </FeedbackProvider>
   );

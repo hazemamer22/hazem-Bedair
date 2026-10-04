@@ -1,1 +1,200 @@
 @import "tailwindcss";
+
+/* =========================================================
+   PRINT ENGINE OPTIMIZATION & A4 PAGE FORMATTING
+   Eliminates blank pages, restores white-on-white text,
+   and normalizes browser print pagination.
+   ========================================================= */
+
+@page {
+  size: A4 portrait;
+  margin: 12mm 10mm 14mm 10mm;
+}
+
+@media print {
+  /* 1. Prevent background stripping and force exact color rendering */
+  *,
+  *::before,
+  *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  /* 2. Reset root and layout containers to block to prevent single-page clamp & blank pages */
+  html,
+  body,
+  #root,
+  #root > div {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* 3. Strip layout offsets, sidebars, and desktop margins that push content off the page in RTL */
+  div[class*="lg:mr-72"],
+  div[class*="mr-"] {
+    margin-right: 0 !important;
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    transform: none !important;
+  }
+
+  main {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  /* 4. Hide all interactive screen controls & navigation */
+  .print\:hidden,
+  aside,
+  header,
+  .toast,
+  .feedback-toast {
+    display: none !important;
+  }
+
+  /* 5. Force printable elements to show */
+  .hidden.print\:block {
+    display: block !important;
+  }
+
+  .hidden.print\:grid {
+    display: grid !important;
+  }
+
+  .hidden.print\:inline {
+    display: inline !important;
+  }
+
+  .hidden.print\:table-cell {
+    display: table-cell !important;
+  }
+
+  .hidden.print\:table-row {
+    display: table-row !important;
+  }
+
+  /* 6. Clean table formatting & pagination rules */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  th, td {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  /* 7. Avoid page break inside cards and signatures */
+  .print-avoid-break,
+  .break-inside-avoid,
+  [class*="break-inside-avoid"] {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* 8. Page break rules for multi-page batch print orders */
+  .print-page-break,
+  .print\:break-after-page {
+    break-after: page !important;
+    page-break-after: always !important;
+  }
+
+  .print-page-break:last-child,
+  .print\:break-after-page:last-child,
+  [class*="print:break-after-page"]:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+  }
+
+  /* 9. Printable inputs & textareas should look like clean plain text */
+  input, textarea, select {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    color: #0f172a !important;
+    appearance: none !important;
+    -webkit-appearance: none !important;
+  }
+
+  /* 10. Specifically format the Print Preview modal if active during print */
+  body.preview-printing-mode {
+    background: #ffffff !important;
+  }
+
+  body.preview-printing-mode aside,
+  body.preview-printing-mode header,
+  body.preview-printing-mode main,
+  body.preview-printing-mode div[class*="min-w-0"] {
+    display: none !important;
+  }
+
+  body.preview-printing-mode .print-preview-modal-overlay {
+    position: static !important;
+    display: block !important;
+    background: #ffffff !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body.preview-printing-mode .print-preview-active-container {
+    position: static !important;
+    display: block !important;
+    background: transparent !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  body.preview-printing-mode #printable-preview-document {
+    display: block !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+}
+

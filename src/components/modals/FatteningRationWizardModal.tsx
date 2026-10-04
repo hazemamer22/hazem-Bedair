@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useLanguage } from '../../context/LanguageContext';
 import { RawMaterial, Ration, RationIngredient } from '../../types';
 import { generateId } from '../../utils/idGenerator';
 import { useFeedback } from '../../context/FeedbackContext';
@@ -45,20 +46,55 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
   onApplyRation,
   existingRation,
 }) => {
+  const { language } = useLanguage();
+  const isEn = language === 'en';
   const { showToast } = useFeedback();
 
   // Find candidate default materials
-  const defaultCorn = rawMaterials.find((r) => r.name.includes('ذرة') && r.materialType !== 'roughage') || rawMaterials[0];
-  const defaultSoy = rawMaterials.find((r) => r.name.includes('صويا')) || rawMaterials[1];
-  const defaultBran = rawMaterials.find((r) => r.name.includes('ردة') || r.name.includes('جلوتوفيد') || r.name.includes('DDGS')) || rawMaterials[2];
-  const defaultPremix = rawMaterials.find((r) => r.name.includes('أملاح') || r.name.includes('بريمكس') || r.materialType === 'mineral') || rawMaterials[3];
+  const safeRawMaterials = Array.isArray(rawMaterials) ? rawMaterials : [];
+  const defaultCorn =
+    safeRawMaterials.find(
+      (r) => (r.name.includes('ذرة') || r.name.toLowerCase().includes('corn')) && r.materialType !== 'roughage'
+    ) || safeRawMaterials[0];
+  const defaultSoy =
+    safeRawMaterials.find(
+      (r) => (r.name.includes('صويا') || r.name.toLowerCase().includes('soy'))
+    ) || safeRawMaterials[1];
+  const defaultBran =
+    safeRawMaterials.find(
+      (r) =>
+        r.name.includes('ردة') ||
+        r.name.includes('جلوتوفيد') ||
+        r.name.includes('DDGS') ||
+        r.name.toLowerCase().includes('bran') ||
+        r.name.toLowerCase().includes('gluten')
+    ) || safeRawMaterials[2];
+  const defaultPremix =
+    safeRawMaterials.find(
+      (r) =>
+        r.name.includes('أملاح') ||
+        r.name.includes('بريمكس') ||
+        r.name.toLowerCase().includes('premix') ||
+        r.materialType === 'mineral'
+    ) || safeRawMaterials[3];
 
-  const defaultSilage = rawMaterials.find((r) => r.name.includes('سيلاج')) || rawMaterials.find((r) => r.materialType === 'roughage');
-  const defaultStraw = rawMaterials.find((r) => r.name.includes('تبن')) || rawMaterials.find((r) => r.id !== defaultSilage?.id && r.materialType === 'roughage');
+  const defaultSilage =
+    safeRawMaterials.find(
+      (r) => r.name.includes('سيلاج') || r.name.toLowerCase().includes('silage')
+    ) || safeRawMaterials.find((r) => r.materialType === 'roughage');
+  const defaultStraw =
+    safeRawMaterials.find(
+      (r) =>
+        (r.name.includes('تبن') || r.name.toLowerCase().includes('straw') || r.name.toLowerCase().includes('hay')) &&
+        r.id !== defaultSilage?.id
+    ) || safeRawMaterials.find((r) => r.id !== defaultSilage?.id && r.materialType === 'roughage');
 
   // Ration identity
   const [rationName, setRationName] = useState(
-    existingRation?.name || 'عليقة تسمين متكاملة (عجل 350 كجم - مركز 2.5% + سيلاج وتبن)'
+    existingRation?.name ||
+      (isEn
+        ? 'Complete Beef Feedlot (350kg Steer - Conc 2.5% + Silage & Straw)'
+        : 'عليقة تسمين متكاملة (عجل 350 كجم - مركز 2.5% + سيلاج وتبن)')
   );
   const [rationCode, setRationCode] = useState(existingRation?.code || 'RAT-FAT-350');
 
@@ -85,7 +121,6 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
     { rawMaterialId: defaultPremix?.id || '', kgInTon: 30 },
   ]);
 
-  // 1. استيراد وقراءة كافة خامات العليقة المستهدفة بنسبة 100% فور فتح الحاسبة
   useEffect(() => {
     if (!isOpen) return;
 
@@ -99,7 +134,6 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
 
         existingRation.ingredients.forEach((ing) => {
           const rm = rawMaterials.find((m) => m.id === ing.rawMaterialId);
-          // إذا كانت معلمة بالخلاطة أو ليست مالئ
           const isConc = ing.inConcentratePremix ?? (rm ? rm.materialType !== 'roughage' : true);
           if (isConc) {
             concItems.push({ rawMaterialId: ing.rawMaterialId, amountKgPerHead: ing.amountKgPerHead });
@@ -108,24 +142,20 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
           }
         });
 
-        // نقل الخامات المالئة إلى جدول المالئ الثابت
         if (roughItems.length > 0) {
           setRoughageItems(roughItems);
         }
 
-        // نقل خامات المركز المحددة للخلاطة إلى تركيبة الطن (1000 كجم) بنسبها المئوية الدقيقة
         const totalConcKg = concItems.reduce((s, i) => s + i.amountKgPerHead, 0);
         if (concItems.length > 0 && totalConcKg > 0) {
           const newTon: TonIngredient[] = concItems.map((item) => {
             const share = item.amountKgPerHead / totalConcKg;
-            // دقة عالية حتى جزء من مائة من الكيلو في الطن
             return {
               rawMaterialId: item.rawMaterialId,
               kgInTon: Math.round(share * 1000 * 100) / 100,
             };
           });
 
-          // ضبط الفارق الطفيف إن وجد ليكون المجموع 1000 كجم تماماً
           const tonSum = newTon.reduce((s, i) => s + i.kgInTon, 0);
           const diff = Math.round((1000 - tonSum) * 100) / 100;
           if (diff !== 0 && newTon.length > 0) {
@@ -134,7 +164,6 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
 
           setTonIngredients(newTon);
 
-          // ضبط حصة المركز المقررة أصلاً
           const roundedConcKg = Math.round(totalConcKg * 10000) / 10000;
           setManualConcentrateKg(roundedConcKg);
 
@@ -149,7 +178,7 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
     }
   }, [isOpen, existingRation, rawMaterials]);
 
-  // 2. قائمة سريعة: استيراد خامات المركز من عليقة أخرى
+  // Import concentrate from existing ration
   const handleImportConcentrateFromRation = (sourceId: string) => {
     if (!sourceId) return;
     const sourceRation = rations.find((r) => r.id === sourceId);
@@ -161,7 +190,12 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
     });
 
     if (concIngs.length === 0) {
-      showToast(`العليقة المختارة (${sourceRation.name}) لا تحتوي على خامات مركزة مسبقة للخلاطة.`, 'warning');
+      showToast(
+        isEn
+          ? `Selected ration (${sourceRation.name}) has no concentrate premix ingredients.`
+          : `العليقة المختارة (${sourceRation.name}) لا تحتوي على خامات مركزة مسبقة للخلاطة.`,
+        'warning'
+      );
       return;
     }
 
@@ -176,7 +210,6 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
       };
     });
 
-    // ضبط ليكون 1000 كجم تماماً
     const tonSum = newTon.reduce((s, i) => s + i.kgInTon, 0);
     const diff = Math.round((1000 - tonSum) * 100) / 100;
     if (diff !== 0 && newTon.length > 0) {
@@ -184,17 +217,22 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
     }
 
     setTonIngredients(newTon);
-    showToast(`تم استيراد ${newTon.length} خامات مركز من (${sourceRation.name}) وتوزيعها على الطن (1000 كجم) بنسبة 100%.`, 'success');
+    showToast(
+      isEn
+        ? `Imported ${newTon.length} concentrate ingredients from (${sourceRation.name}) scaled to 1 ton (1000 kg).`
+        : `تم استيراد ${newTon.length} خامات مركز من (${sourceRation.name}) وتوزيعها على الطن (1000 كجم) بنسبة 100%.`,
+      'success'
+    );
   };
 
-  // Derived effective concentrate kg per head (دقة 4 أرقام عشرية)
+  // Derived effective concentrate kg per head
   const effectiveConcentrateKg = useMemo(() => {
     if (isManualConcentrate) {
       return Math.max(0, Number(manualConcentrateKg) || 0);
     }
     const weight = Math.max(0, Number(bodyWeightKg) || 0);
     const pct = Math.max(0, Number(concentratePercent) || 0);
-    return Math.round((weight * (pct / 100)) * 10000) / 10000;
+    return Math.round(weight * (pct / 100) * 10000) / 10000;
   }, [isManualConcentrate, manualConcentrateKg, bodyWeightKg, concentratePercent]);
 
   // Total Ton weight check
@@ -225,7 +263,7 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
       : 0;
   }, [totalRoughageKg, totalRationKgPerHead]);
 
-  // Auto-normalize ton items to exact 1000 kg if user wants
+  // Auto-normalize ton items to exact 1000 kg
   const handleNormalizeTon = () => {
     if (totalTonKg <= 0) return;
     const factor = 1000 / totalTonKg;
@@ -239,49 +277,54 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
       normalized[0].kgInTon = Math.round((normalized[0].kgInTon + diff) * 100) / 100;
     }
     setTonIngredients(normalized);
-    showToast('تمت إعادة ضبط مجموع خامات المركز إلى 1000 كجم (طن كامل) تلقائياً بنسبة 100%.', 'success');
+    showToast(
+      isEn
+        ? 'Concentrate ingredients automatically normalized to 1000 kg (1 Ton).'
+        : 'تمت إعادة ضبط مجموع خامات المركز إلى 1000 كجم (طن كامل) تلقائياً بنسبة 100%.',
+      'success'
+    );
   };
 
-  // Add Ton Ingredient
   const handleAddTonIngredient = () => {
     const existingIds = tonIngredients.map((i) => i.rawMaterialId);
-    const available = rawMaterials.find((rm) => !existingIds.includes(rm.id) && rm.materialType !== 'roughage') || rawMaterials[0];
+    const available =
+      rawMaterials.find((rm) => !existingIds.includes(rm.id) && rm.materialType !== 'roughage') || rawMaterials[0];
     if (!available) return;
     setTonIngredients([...tonIngredients, { rawMaterialId: available.id, kgInTon: 50 }]);
   };
 
-  // Remove Ton Ingredient
   const handleRemoveTonIngredient = (index: number) => {
     if (tonIngredients.length <= 1) {
-      showToast('يجب إبقاء خامة واحدة على الأقل في تركيبة المركز.', 'warning');
+      showToast(
+        isEn
+          ? 'Must keep at least one ingredient in concentrate formula.'
+          : 'يجب إبقاء خامة واحدة على الأقل في تركيبة المركز.',
+        'warning'
+      );
       return;
     }
     setTonIngredients(tonIngredients.filter((_, i) => i !== index));
   };
 
-  // Add Roughage
   const handleAddRoughage = () => {
     const existingIds = roughageItems.map((i) => i.rawMaterialId);
-    const available = rawMaterials.find((rm) => !existingIds.includes(rm.id) && rm.materialType === 'roughage') || rawMaterials[0];
+    const available =
+      rawMaterials.find((rm) => !existingIds.includes(rm.id) && rm.materialType === 'roughage') || rawMaterials[0];
     if (!available) return;
     setRoughageItems([...roughageItems, { rawMaterialId: available.id, kgPerHead: 1.0 }]);
   };
 
-  // Remove Roughage
   const handleRemoveRoughage = (index: number) => {
     setRoughageItems(roughageItems.filter((_, i) => i !== index));
   };
 
-  // 3. دقة الجرامات للإضافات والبريمكس: احتفاظ حتى 4 أرقام عشرية
   const calculatedIngredients = useMemo<RationIngredient[]>(() => {
     const list: RationIngredient[] = [];
     const safeTonTotal = totalTonKg > 0 ? totalTonKg : 1000;
 
-    // 1. خامات المركز مقسمة من الطن مع الحفاظ على دقة الجرامات
     tonIngredients.forEach((item) => {
       const shareInTon = item.kgInTon / safeTonTotal;
       const exactAmount = shareInTon * effectiveConcentrateKg;
-      // دقة حتى 4 خانات عشرية (0.0001 كجم = 0.1 جم) لضمان عدم تصفير أي بريمكس
       const kgPerHead = Math.round(exactAmount * 10000) / 10000;
       list.push({
         rawMaterialId: item.rawMaterialId,
@@ -290,7 +333,6 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
       });
     });
 
-    // 2. خامات المالئ الثابت للرأس
     roughageItems.forEach((item) => {
       list.push({
         rawMaterialId: item.rawMaterialId,
@@ -302,41 +344,39 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
     return list;
   }, [tonIngredients, roughageItems, totalTonKg, effectiveConcentrateKg]);
 
-  // دالة عرض الأوزان الصغيرة بدقة الجرامات
   const renderFormattedAmountWithGrams = (kg: number) => {
-    if (kg <= 0) return '0 كجم';
+    if (kg <= 0) return isEn ? '0 kg' : '0 كجم';
     if (kg < 0.1) {
       const grams = (kg * 1000).toFixed(1).replace(/\.0$/, '');
       return (
         <span className="inline-flex items-center gap-1">
           <span className="font-mono font-black text-amber-950 text-sm">
-            {kg.toFixed(4).replace(/\.?0+$/, '')} كجم
+            {kg.toFixed(4).replace(/\.?0+$/, '')} {isEn ? 'kg' : 'كجم'}
           </span>
           <span className="text-[11px] bg-amber-100 text-amber-950 border border-amber-300 px-1.5 py-0.5 rounded font-black whitespace-nowrap">
-            {grams} جم
+            {grams} {isEn ? 'g' : 'جم'}
           </span>
         </span>
       );
     }
     return (
       <span className="font-mono font-black text-emerald-950 text-sm">
-        {kg.toFixed(2).replace(/\.?0+$/, '')} كجم
+        {kg.toFixed(2).replace(/\.?0+$/, '')} {isEn ? 'kg' : 'كجم'}
       </span>
     );
   };
 
-  // Handle Apply and Generate
   const handleApply = () => {
     if (!rationName.trim()) {
-      showToast('يرجى كتابة اسم العليقة.', 'warning');
+      showToast(isEn ? 'Please enter ration name.' : 'يرجى كتابة اسم العليقة.', 'warning');
       return;
     }
     if (tonIngredients.length === 0) {
-      showToast('يرجى تحديد خامات المركز.', 'warning');
+      showToast(isEn ? 'Please add concentrate materials.' : 'يرجى تحديد خامات المركز.', 'warning');
       return;
     }
     if (effectiveConcentrateKg <= 0 && totalRoughageKg <= 0) {
-      showToast('إجمالي العليقة يجب أن يكون أكبر من الصفر.', 'warning');
+      showToast(isEn ? 'Total ration must be greater than zero.' : 'إجمالي العليقة يجب أن يكون أكبر من الصفر.', 'warning');
       return;
     }
 
@@ -345,13 +385,17 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
       name: rationName,
       code: rationCode,
       calculationType: 'per_head',
-      notes: `عليقة تسمين متكاملة: وزن عجل ${bodyWeightKg} كجم × نسبة مركز ${concentratePercent}% (${effectiveConcentrateKg} كجم مركز بالطن + ${totalRoughageKg} كجم مالئ ثابت)`,
+      notes: isEn
+        ? `Complete Beef Ration: Steer wt ${bodyWeightKg}kg × ${concentratePercent}% (${effectiveConcentrateKg}kg conc. + ${totalRoughageKg}kg roughage)`
+        : `عليقة تسمين متكاملة: وزن عجل ${bodyWeightKg} كجم × نسبة مركز ${concentratePercent}% (${effectiveConcentrateKg} كجم مركز بالطن + ${totalRoughageKg} كجم مالئ ثابت)`,
       ingredients: calculatedIngredients,
     };
 
     onApplyRation(newRation);
     showToast(
-      `تم توليد (${rationName}) بنجاح بإجمالي ${totalRationKgPerHead} كجم/رأس (${effectiveConcentrateKg} كجم مركز + ${totalRoughageKg} كجم مالئ).`,
+      isEn
+        ? `Generated (${rationName}) with ${totalRationKgPerHead} kg/head total.`
+        : `تم توليد (${rationName}) بنجاح بإجمالي ${totalRationKgPerHead} كجم/رأس (${effectiveConcentrateKg} كجم مركز + ${totalRoughageKg} كجم مالئ).`,
       'success'
     );
     onClose();
@@ -360,9 +404,15 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-auto space-y-5 max-h-[92vh] overflow-y-auto">
-        
+    <div
+      className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      dir={isEn ? 'ltr' : 'rtl'}
+    >
+      <div
+        className={`bg-white rounded-2xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-slate-200 my-auto space-y-5 max-h-[92vh] overflow-y-auto ${
+          isEn ? 'text-left' : 'text-right'
+        }`}
+      >
         {/* Header */}
         <div className="flex items-start justify-between border-b border-slate-100 pb-3.5">
           <div className="flex items-center gap-3">
@@ -372,14 +422,16 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="font-extrabold text-slate-900 text-lg sm:text-xl">
-                  مُحوّل وحاسبة تركيبة التسمين الذكية
+                  {isEn ? 'Smart Beef Ration Wizard & Converter' : 'مُحوّل وحاسبة تركيبة التسمين الذكية'}
                 </h3>
                 <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 text-[10px] font-black px-2 py-0.5 rounded-md">
-                  طن مركز 📦 + مالئ ثابت 🚜
+                  {isEn ? '1 Ton Conc. 📦 + Fixed Roughage 🚜' : 'طن مركز 📦 + مالئ ثابت 🚜'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                حساب آلي فوري لحصة العجل من طن المركز حسب الوزن الحي مع تثبيت السيلاج والتبن
+                {isEn
+                  ? 'Automatic calculation of steer concentrate share from 1 ton formulation with fixed silage & straw'
+                  : 'حساب آلي فوري لحصة العجل من طن المركز حسب الوزن الحي مع تثبيت السيلاج والتبن'}
               </p>
             </div>
           </div>
@@ -391,11 +443,11 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
           </button>
         </div>
 
-        {/* 2. شريط استيراد خامات المركز من عليقة أخرى */}
+        {/* 2. Import Concentrate from another ration */}
         <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2 text-xs font-black text-amber-950">
             <FolderInput className="w-4 h-4 text-amber-700 shrink-0" />
-            <span>استيراد خامات المركز من عليقة أخرى:</span>
+            <span>{isEn ? 'Import concentrate materials from another ration:' : 'استيراد خامات المركز من عليقة أخرى:'}</span>
           </div>
 
           <div className="flex items-center gap-2 flex-1 sm:max-w-md">
@@ -404,10 +456,10 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
               onChange={(e) => setSelectedSourceRationId(e.target.value)}
               className="flex-1 px-3 py-1.5 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-amber-600"
             >
-              <option value="">-- اختر عليقة مسجلة بالمزرعة --</option>
+              <option value="">{isEn ? '-- Select a farm ration --' : '-- اختر عليقة مسجلة بالمزرعة --'}</option>
               {rations.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name} ({r.code || 'بدون كود'})
+                  {r.name} ({r.code || (isEn ? 'No code' : 'بدون كود')})
                 </option>
               ))}
             </select>
@@ -423,27 +475,32 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
               }`}
             >
               <Download className="w-3.5 h-3.5" />
-              <span>استيراد الخامات 📥</span>
+              <span>{isEn ? 'Import Materials 📥' : 'استيراد الخامات 📥'}</span>
             </button>
           </div>
         </div>
 
         {/* Dynamic Parameter Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          
           {/* Card 1: Animal Weight & Concentrate Ratio */}
           <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-amber-950 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-amber-700" />
-                معادلة العجل والمركز:
+                {isEn ? 'Steer & Concentrate Formula:' : 'معادلة العجل والمركز:'}
               </span>
               <button
                 type="button"
                 onClick={() => setIsManualConcentrate(!isManualConcentrate)}
                 className="text-[10px] font-bold text-amber-800 hover:text-amber-950 underline cursor-pointer"
               >
-                {isManualConcentrate ? 'الرجوع للحساب بالوزن' : 'إدخال يدوي مباشر'}
+                {isManualConcentrate
+                  ? isEn
+                    ? 'Formula Mode'
+                    : 'الرجوع للحساب بالوزن'
+                  : isEn
+                  ? 'Direct Input'
+                  : 'إدخال يدوي مباشر'}
               </button>
             </div>
 
@@ -451,7 +508,7 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
               <div className="space-y-2.5">
                 <div>
                   <label className="block text-[11px] font-bold text-amber-900 mb-1">
-                    متوسط وزن العجل (كجم):
+                    {isEn ? 'Average Steer Live Weight (kg):' : 'متوسط وزن العجل (كجم):'}
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -463,13 +520,13 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                       onChange={(e) => setBodyWeightKg(parseFloat(e.target.value) || 0)}
                       className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-sm font-black text-slate-900 text-center focus:outline-amber-600"
                     />
-                    <span className="text-xs font-bold text-amber-900">كجم</span>
+                    <span className="text-xs font-bold text-amber-900">{isEn ? 'kg' : 'كجم'}</span>
                   </div>
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-amber-900 mb-1">
-                    نسبة المركز من الوزن الحي (%):
+                    {isEn ? 'Concentrate % of Live Weight (%):' : 'نسبة المركز من الوزن الحي (%):'}
                   </label>
                   <div className="flex items-center gap-2">
                     <input
@@ -488,7 +545,7 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
             ) : (
               <div>
                 <label className="block text-[11px] font-bold text-amber-900 mb-1">
-                  حصة المركز اليومية المباشرة (كجم/رأس):
+                  {isEn ? 'Direct Daily Concentrate (kg/head):' : 'حصة المركز اليومية المباشرة (كجم/رأس):'}
                 </label>
                 <div className="flex items-center gap-2">
                   <input
@@ -499,7 +556,7 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                     onChange={(e) => setManualConcentrateKg(parseFloat(e.target.value) || 0)}
                     className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl text-sm font-black text-slate-900 text-center focus:outline-amber-600"
                   />
-                  <span className="text-xs font-bold text-amber-900">كجم</span>
+                  <span className="text-xs font-bold text-amber-900">{isEn ? 'kg' : 'كجم'}</span>
                 </div>
               </div>
             )}
@@ -507,13 +564,14 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
             {/* Live Result of Concentrate */}
             <div className="p-2.5 bg-amber-100/90 border border-amber-300 rounded-xl text-center">
               <span className="text-[10px] font-extrabold text-amber-800 block">
-                حصة العجل اليومية من المركز:
+                {isEn ? 'Daily Steer Concentrate Share:' : 'حصة العجل اليومية من المركز:'}
               </span>
               <span className="text-lg font-black text-amber-950">
-                {effectiveConcentrateKg.toLocaleString()} <span className="text-xs">كجم مركز / رأس</span>
+                {effectiveConcentrateKg.toLocaleString()}{' '}
+                <span className="text-xs">{isEn ? 'kg conc. / head' : 'كجم مركز / رأس'}</span>
               </span>
               <p className="text-[9px] text-amber-700 mt-0.5">
-                ({bodyWeightKg} كجم × {concentratePercent}% = {effectiveConcentrateKg} كجم)
+                ({bodyWeightKg} {isEn ? 'kg' : 'كجم'} × {concentratePercent}% = {effectiveConcentrateKg} {isEn ? 'kg' : 'كجم'})
               </p>
             </div>
           </div>
@@ -523,14 +581,14 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
             <div className="flex items-center justify-between">
               <span className="text-xs font-black text-slate-900 flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-slate-700" />
-                المواد المالئة الثابتة (للرأس):
+                {isEn ? 'Fixed Roughage (Per Head):' : 'المواد المالئة الثابتة (للرأس):'}
               </span>
               <button
                 type="button"
                 onClick={handleAddRoughage}
                 className="text-[11px] text-emerald-800 hover:text-emerald-950 font-bold flex items-center gap-0.5 cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" /> إضافة مالئ
+                <Plus className="w-3.5 h-3.5" /> {isEn ? 'Add Roughage' : 'إضافة مالئ'}
               </button>
             </div>
 
@@ -565,13 +623,13 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                     }}
                     className="w-16 px-1.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-black text-slate-900 text-center"
                   />
-                  <span className="text-[10px] font-bold text-slate-500">كجم</span>
+                  <span className="text-[10px] font-bold text-slate-500">{isEn ? 'kg' : 'كجم'}</span>
 
                   <button
                     type="button"
                     onClick={() => handleRemoveRoughage(idx)}
                     className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg cursor-pointer"
-                    title="حذف"
+                    title={isEn ? 'Remove' : 'حذف'}
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -581,13 +639,14 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
 
             <div className="p-2.5 bg-slate-100 border border-slate-300 rounded-xl text-center">
               <span className="text-[10px] font-extrabold text-slate-700 block">
-                إجمالي المواد المالئة الثابتة:
+                {isEn ? 'Total Fixed Roughage:' : 'إجمالي المواد المالئة الثابتة:'}
               </span>
               <span className="text-lg font-black text-slate-900">
-                {totalRoughageKg.toLocaleString()} <span className="text-xs">كجم مالئ / رأس</span>
+                {totalRoughageKg.toLocaleString()}{' '}
+                <span className="text-xs">{isEn ? 'kg roughage / head' : 'كجم مالئ / رأس'}</span>
               </span>
               <p className="text-[9px] text-slate-500 mt-0.5">
-                تُحمّل باللودر مباشرة في مكسر الـ TMR
+                {isEn ? 'Loaded directly via tractor loader into TMR mixer' : 'تُحمّل باللودر مباشرة في مكسر الـ TMR'}
               </p>
             </div>
           </div>
@@ -597,16 +656,16 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
             <div>
               <span className="text-xs font-black text-emerald-950 flex items-center gap-1.5 mb-2">
                 <Scale className="w-4 h-4 text-emerald-700" />
-                ملخص العليقة اليومية للرأس (TMR):
+                {isEn ? 'Combined Daily TMR Summary:' : 'ملخص العليقة اليومية للرأس (TMR):'}
               </span>
 
               <div className="p-3 bg-white border border-emerald-200 rounded-xl text-center space-y-1">
                 <span className="text-[10px] font-bold text-emerald-800 block">
-                  إجمالي العليقة المتكاملة للرأس/يوم:
+                  {isEn ? 'Total Daily TMR per Head:' : 'إجمالي العليقة المتكاملة للرأس/يوم:'}
                 </span>
                 <span className="text-2xl font-black text-emerald-950">
                   {totalRationKgPerHead.toLocaleString()}{' '}
-                  <span className="text-sm font-bold">كجم/رأس</span>
+                  <span className="text-sm font-bold">{isEn ? 'kg/head' : 'كجم/رأس'}</span>
                 </span>
               </div>
             </div>
@@ -616,16 +675,20 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
               <div className="flex items-center justify-between text-xs font-black">
                 <span className="text-amber-950 flex items-center gap-1">
                   <Package className="w-3.5 h-3.5 text-amber-700" />
-                  علف مركز (شكاير):
+                  {isEn ? 'Concentrate (Bags):' : 'علف مركز (شكاير):'}
                 </span>
-                <span className="text-amber-900">{effectiveConcentrateKg} كجم ({concentrateShareInTmr}%)</span>
+                <span className="text-amber-900">
+                  {effectiveConcentrateKg} {isEn ? 'kg' : 'كجم'} ({concentrateShareInTmr}%)
+                </span>
               </div>
               <div className="flex items-center justify-between text-xs font-black">
                 <span className="text-slate-800 flex items-center gap-1">
                   <Truck className="w-3.5 h-3.5 text-slate-600" />
-                  مالئ مباشر (لودر):
+                  {isEn ? 'Direct Roughage (Loader):' : 'مالئ مباشر (لودر):'}
                 </span>
-                <span className="text-slate-900">{totalRoughageKg} كجم ({roughageShareInTmr}%)</span>
+                <span className="text-slate-900">
+                  {totalRoughageKg} {isEn ? 'kg' : 'كجم'} ({roughageShareInTmr}%)
+                </span>
               </div>
             </div>
           </div>
@@ -637,10 +700,12 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
             <div>
               <span className="text-sm font-black text-slate-900 flex items-center gap-1.5">
                 <Package className="w-4 h-4 text-amber-700" />
-                تركيبة طن العلف المركز المسبق (1000 كجم)
+                {isEn ? 'Dry Concentrate Premix Ton Formula (1000 kg)' : 'تركيبة طن العلف المركز المسبق (1000 كجم)'}
               </span>
               <p className="text-[11px] text-slate-500">
-                أدخل خامات الطن الواحد وسيوزع البرنامج الـ {effectiveConcentrateKg} كجم على العجل بنسبها المضبوطة آلياً
+                {isEn
+                  ? `Enter ingredients for 1 single ton; the system automatically calculates the ${effectiveConcentrateKg} kg share per head`
+                  : `أدخل خامات الطن الواحد وسيوزع البرنامج الـ ${effectiveConcentrateKg} كجم على العجل بنسبها المضبوطة آلياً`}
               </p>
             </div>
 
@@ -657,7 +722,9 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                 ) : (
                   <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
                 )}
-                <span>مجموع الطن: {totalTonKg.toLocaleString()} كجم</span>
+                <span>
+                  {isEn ? `Ton Total: ${totalTonKg.toLocaleString()} kg` : `مجموع الطن: ${totalTonKg.toLocaleString()} كجم`}
+                </span>
               </div>
 
               {Math.abs(totalTonKg - 1000) >= 0.1 && (
@@ -665,10 +732,10 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                   type="button"
                   onClick={handleNormalizeTon}
                   className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer transition-all"
-                  title="ضبط نسبي مباشر ليصبح المجموع 1000 كجم تماماً"
+                  title={isEn ? 'Normalize ingredients directly to 1000 kg' : 'ضبط نسبي مباشر ليصبح المجموع 1000 كجم تماماً'}
                 >
                   <RefreshCw className="w-3 h-3" />
-                  <span>ضبط إلى 1000 كجم</span>
+                  <span>{isEn ? 'Scale to 1000 kg' : 'ضبط إلى 1000 كجم'}</span>
                 </button>
               )}
 
@@ -678,7 +745,7 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                 className="px-3 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>إضافة خامة مركز</span>
+                <span>{isEn ? 'Add Concentrate Material' : 'إضافة خامة مركز'}</span>
               </button>
             </div>
           </div>
@@ -698,13 +765,13 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                      {percent}% من المركز
+                      {percent}% {isEn ? 'of conc.' : 'من المركز'}
                     </span>
                     <button
                       type="button"
                       onClick={() => handleRemoveTonIngredient(idx)}
                       className="text-slate-400 hover:text-rose-600 p-0.5 cursor-pointer"
-                      title="حذف"
+                      title={isEn ? 'Delete' : 'حذف'}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -727,7 +794,7 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                   </select>
 
                   <div className="flex items-center justify-between gap-1 text-xs">
-                    <span className="text-[11px] font-medium text-slate-500">في الطن:</span>
+                    <span className="text-[11px] font-medium text-slate-500">{isEn ? 'In Ton:' : 'في الطن:'}</span>
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
@@ -741,12 +808,12 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                         }}
                         className="w-20 px-2 py-1 bg-white border border-slate-300 rounded-md font-black text-slate-900 text-center"
                       />
-                      <span className="text-[10px] font-bold text-slate-500">كجم</span>
+                      <span className="text-[10px] font-bold text-slate-500">{isEn ? 'kg' : 'كجم'}</span>
                     </div>
                   </div>
 
                   <div className="pt-1.5 border-t border-slate-200 flex items-center justify-between text-[11px] font-bold">
-                    <span className="text-slate-500">نصيب الرأس:</span>
+                    <span className="text-slate-500">{isEn ? 'Per Head:' : 'نصيب الرأس:'}</span>
                     <div>{renderFormattedAmountWithGrams(perHeadKg)}</div>
                   </div>
                 </div>
@@ -759,34 +826,39 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
         <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black text-slate-900">
-              المعاينة النهائية لمكونات العليقة اليومية للرأس (بدقة الجرامات):
+              {isEn
+                ? 'Final Preview of Daily Head Ingredients (Gram Precision):'
+                : 'المعاينة النهائية لمكونات العليقة اليومية للرأس (بدقة الجرامات):'}
             </span>
             <span className="text-[11px] text-slate-500">
-              {calculatedIngredients.length} خامات علفية (مركّز معبأ في شكاير + مالئ مباشر)
+              {isEn
+                ? `${calculatedIngredients.length} ingredients (bagged concentrate + direct roughage)`
+                : `${calculatedIngredients.length} خامات علفية (مركّز معبأ في شكاير + مالئ مباشر)`}
             </span>
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
-            <table className="w-full text-right text-xs">
+            <table className={`w-full ${isEn ? 'text-left' : 'text-right'} text-xs`}>
               <thead className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
                 <tr>
-                  <th className="p-2.5">الخامة العلفية</th>
-                  <th className="p-2.5 text-center">الكمية المقررة للرأس/يوم</th>
-                  <th className="p-2.5 text-center">النسبة في العليقة %</th>
-                  <th className="p-2.5 text-center">طريقة الخلط والتجهيز بالمزرعة</th>
+                  <th className="p-2.5">{isEn ? 'Feed Material' : 'الخامة العلفية'}</th>
+                  <th className="p-2.5 text-center">{isEn ? 'Target Amount / Head / Day' : 'الكمية المقررة للرأس/يوم'}</th>
+                  <th className="p-2.5 text-center">{isEn ? 'Ratio in TMR %' : 'النسبة في العليقة %'}</th>
+                  <th className="p-2.5 text-center">{isEn ? 'Farm Mixing Method' : 'طريقة الخلط والتجهيز بالمزرعة'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {calculatedIngredients.map((item, idx) => {
                   const rm = rawMaterials.find((m) => m.id === item.rawMaterialId);
-                  const share = totalRationKgPerHead > 0
-                    ? Math.round((item.amountKgPerHead / totalRationKgPerHead) * 1000) / 10
-                    : 0;
+                  const share =
+                    totalRationKgPerHead > 0
+                      ? Math.round((item.amountKgPerHead / totalRationKgPerHead) * 1000) / 10
+                      : 0;
 
                   return (
                     <tr key={idx} className={item.inConcentratePremix ? 'bg-amber-50/30' : 'bg-white'}>
                       <td className="p-2.5 font-bold text-slate-900">
-                        {rm?.name || 'خامة'}
+                        {rm?.name || (isEn ? 'Material' : 'خامة')}
                       </td>
                       <td className="p-2.5 text-center font-black">
                         {renderFormattedAmountWithGrams(item.amountKgPerHead)}
@@ -798,12 +870,12 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
                         {item.inConcentratePremix ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-950 border border-amber-300 font-black text-[11px]">
                             <Package className="w-3 h-3 text-amber-700" />
-                            خلاطة المركز (شكاير) 📦
+                            {isEn ? 'Concentrate Mixer (Bags) 📦' : 'خلاطة المركز (شكاير) 📦'}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-200 text-slate-800 border border-slate-300 font-bold text-[11px]">
                             <Truck className="w-3 h-3 text-slate-600" />
-                            مكسر TMR مباشر 🚜
+                            {isEn ? 'Direct TMR Loader 🚜' : 'مكسر TMR مباشر 🚜'}
                           </span>
                         )}
                       </td>
@@ -819,7 +891,9 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
         <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">اسم العليقة:</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {isEn ? 'Ration Name:' : 'اسم العليقة:'}
+              </label>
               <input
                 type="text"
                 value={rationName}
@@ -828,7 +902,9 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">كود العليقة:</label>
+              <label className="block text-[11px] font-bold text-slate-700 mb-0.5">
+                {isEn ? 'Ration Code:' : 'كود العليقة:'}
+              </label>
               <input
                 type="text"
                 value={rationCode}
@@ -844,7 +920,7 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
               onClick={onClose}
               className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs cursor-pointer"
             >
-              إلغاء
+              {isEn ? 'Cancel' : 'إلغاء'}
             </button>
             <button
               type="button"
@@ -852,11 +928,10 @@ export const FatteningRationWizardModal: React.FC<FatteningRationWizardModalProp
               className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold rounded-xl text-xs shadow-md active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Sparkles className="w-4 h-4" />
-              <span>توليد وتطبيق العليقة الذكية</span>
+              <span>{isEn ? 'Generate & Apply Smart Ration' : 'توليد وتطبيق العليقة الذكية'}</span>
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );

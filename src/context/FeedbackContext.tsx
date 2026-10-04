@@ -71,8 +71,11 @@ export const FeedbackProvider: React.FC<{ children: ReactNode }> = ({ children }
     };
 
     const handleStorageError = () => {
+      const isEn = typeof window !== 'undefined' && (localStorage.getItem('farm_system_language') === 'en' || document.documentElement.lang === 'en');
       showToast(
-        'تنبيه: مساحة التخزين المحلي في المتصفح ممتلئة! يرجى تصدير نسخة احتياطية من الإعدادات لتفادي فقدان البيانات.',
+        isEn
+          ? 'Warning: Browser local storage is full! Please export a backup from Settings to prevent data loss.'
+          : 'تنبيه: مساحة التخزين المحلي في المتصفح ممتلئة! يرجى تصدير نسخة احتياطية من الإعدادات لتفادي فقدان البيانات.',
         'error'
       );
     };
@@ -123,7 +126,7 @@ export const FeedbackProvider: React.FC<{ children: ReactNode }> = ({ children }
                 type="button"
                 onClick={() => removeToast(toast.id)}
                 className="p-1 text-white/70 hover:text-white rounded-lg hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-                title="إغلاق"
+                title={typeof document !== 'undefined' && document.documentElement.lang === 'en' ? 'Close' : 'إغلاق'}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -133,66 +136,72 @@ export const FeedbackProvider: React.FC<{ children: ReactNode }> = ({ children }
       </div>
 
       {/* Confirmation Modal */}
-      {confirmModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
-        >
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center gap-3">
-              <div
-                className={`p-3 rounded-2xl ${
-                  confirmModal.isDanger
-                    ? 'bg-rose-50 text-rose-600'
-                    : 'bg-amber-50 text-amber-600'
-                }`}
-              >
-                {confirmModal.isDanger ? (
-                  <AlertCircle className="w-6 h-6" />
-                ) : (
-                  <AlertTriangle className="w-6 h-6" />
-                )}
+      {confirmModal && (() => {
+        const isEn = typeof document !== 'undefined' && (document.documentElement.lang === 'en' || localStorage.getItem('farm_system_language') === 'en');
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            dir={isEn ? 'ltr' : 'rtl'}
+            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4"
+          >
+            <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`p-3 rounded-2xl ${
+                    confirmModal.isDanger
+                      ? 'bg-rose-50 text-rose-600'
+                      : 'bg-amber-50 text-amber-600'
+                  }`}
+                >
+                  {confirmModal.isDanger ? (
+                    <AlertCircle className="w-6 h-6" />
+                  ) : (
+                    <AlertTriangle className="w-6 h-6" />
+                  )}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">{confirmModal.title}</h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {isEn ? 'Please confirm to proceed' : 'يرجى التأكيد للمتابعة'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-extrabold text-slate-900 text-base">{confirmModal.title}</h3>
-                <p className="text-xs text-slate-500 font-medium">يرجى التأكيد للمتابعة</p>
+
+              <p className="text-xs font-semibold text-slate-700 leading-relaxed">
+                {confirmModal.message}
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    confirmModal.onCancel?.();
+                    setConfirmModal(null);
+                  }}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
+                >
+                  {confirmModal.cancelText || (isEn ? 'Cancel' : 'إلغاء')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    confirmModal.onConfirm();
+                    setConfirmModal(null);
+                  }}
+                  className={`px-5 py-2.5 font-bold rounded-xl text-xs text-white shadow-md transition-all active:scale-95 cursor-pointer ${
+                    confirmModal.isDanger
+                      ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
+                      : 'bg-emerald-700 hover:bg-emerald-800 shadow-emerald-700/20'
+                  }`}
+                >
+                  {confirmModal.confirmText || (isEn ? 'Confirm' : 'تأكيد')}
+                </button>
               </div>
-            </div>
-
-            <p className="text-xs font-semibold text-slate-700 leading-relaxed">
-              {confirmModal.message}
-            </p>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  confirmModal.onCancel?.();
-                  setConfirmModal(null);
-                }}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all cursor-pointer"
-              >
-                {confirmModal.cancelText || 'إلغاء'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  confirmModal.onConfirm();
-                  setConfirmModal(null);
-                }}
-                className={`px-5 py-2.5 font-bold rounded-xl text-xs text-white shadow-md transition-all active:scale-95 cursor-pointer ${
-                  confirmModal.isDanger
-                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/20'
-                    : 'bg-emerald-700 hover:bg-emerald-800 shadow-emerald-700/20'
-                }`}
-              >
-                {confirmModal.confirmText || 'تأكيد'}
-              </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </FeedbackContext.Provider>
   );
 };

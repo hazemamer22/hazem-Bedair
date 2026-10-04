@@ -1,5 +1,6 @@
 import React from 'react';
 import { ActiveTab } from '../types';
+import { useLanguage } from '../context/LanguageContext';
 import {
   LayoutDashboard,
   CalendarDays,
@@ -18,6 +19,10 @@ import {
   X,
   Layers,
   Package,
+  UserCheck,
+  PanelRightClose,
+  PanelLeftClose,
+  Coins,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -37,31 +42,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
   farmName,
   hasConcentrateMixer = true,
 }) => {
+  const { language, isRtl, t } = useLanguage();
+
   const menuItems: { id: ActiveTab; label: string; icon: React.ReactNode; group: 'ops' | 'data' | 'system' }[] = [
-    { id: 'dashboard', label: 'الرئيسية', icon: <LayoutDashboard className="w-5 h-5" />, group: 'ops' },
-    { id: 'daily_plan', label: 'خطة التشغيل اليومية', icon: <CalendarDays className="w-5 h-5" />, group: 'ops' },
+    { id: 'dashboard', label: t('nav.dashboard', 'الرئيسية'), icon: <LayoutDashboard className="w-5 h-5" />, group: 'ops' },
+    { id: 'daily_plan', label: t('nav.daily_plan', 'خطة التشغيل اليومية'), icon: <CalendarDays className="w-5 h-5" />, group: 'ops' },
+    { id: 'farm_economics', label: t('nav.farm_economics', 'اقتصاديات المزرعة و IOFC'), icon: <Coins className="w-5 h-5" />, group: 'ops' },
     ...(hasConcentrateMixer
-      ? [{ id: 'concentrate_premix' as ActiveTab, label: 'خلاطة المركز والشكاير', icon: <Package className="w-5 h-5" />, group: 'ops' as const }]
+      ? [{ id: 'concentrate_premix' as ActiveTab, label: t('nav.concentrate_premix', 'خلاطة المركز والشكاير'), icon: <Package className="w-5 h-5" />, group: 'ops' as const }]
       : []),
-    { id: 'distributions', label: 'توزيع اللفات على العنابر', icon: <Layers className="w-5 h-5" />, group: 'ops' },
-    { id: 'prep_orders', label: 'أوامر تحضير المكسر', icon: <ClipboardList className="w-5 h-5" />, group: 'ops' },
-    { id: 'driver_sheet', label: 'كشف السائق والتوزيع', icon: <Truck className="w-5 h-5" />, group: 'ops' },
-    { id: 'warehouse', label: 'احتياجات المخزن', icon: <Warehouse className="w-5 h-5" />, group: 'ops' },
-    { id: 'reports', label: 'تقرير التغذية اليومي', icon: <FileSpreadsheet className="w-5 h-5" />, group: 'ops' },
-    { id: 'history', label: 'السجل اليومي والأرشيف', icon: <History className="w-5 h-5" />, group: 'ops' },
+    { id: 'distributions', label: t('nav.distributions', 'توزيع اللفات على العنابر'), icon: <Layers className="w-5 h-5" />, group: 'ops' },
+    { id: 'prep_orders', label: t('nav.prep_orders', 'أوامر تحضير المكسر'), icon: <ClipboardList className="w-5 h-5" />, group: 'ops' },
+    { id: 'driver_sheet', label: t('nav.driver_sheet', 'كشف السائق والتوزيع'), icon: <Truck className="w-5 h-5" />, group: 'ops' },
+    { id: 'warehouse', label: t('nav.warehouse', 'احتياجات المخزن'), icon: <Warehouse className="w-5 h-5" />, group: 'ops' },
+    { id: 'reports', label: t('nav.reports', 'تقرير التغذية اليومي'), icon: <FileSpreadsheet className="w-5 h-5" />, group: 'ops' },
+    { id: 'history', label: t('nav.history', 'السجل اليومي والأرشيف'), icon: <History className="w-5 h-5" />, group: 'ops' },
 
-    { id: 'raw_materials', label: 'قاعدة الخامات', icon: <Wheat className="w-5 h-5" />, group: 'data' },
-    { id: 'rations', label: 'تركيبات العلائق', icon: <Scale className="w-5 h-5" />, group: 'data' },
-    { id: 'categories', label: 'الفئات الحيوانية', icon: <Beef className="w-5 h-5" />, group: 'data' },
-    { id: 'barns', label: 'العنابر والنواحي', icon: <Home className="w-5 h-5" />, group: 'data' },
-    { id: 'mixers', label: 'المكسرات التفاعلية', icon: <MixerIcon className="w-5 h-5" />, group: 'data' },
+    { id: 'raw_materials', label: t('nav.raw_materials', 'قاعدة الخامات'), icon: <Wheat className="w-5 h-5" />, group: 'data' },
+    { id: 'rations', label: t('nav.rations', 'تركيبات العلائق'), icon: <Scale className="w-5 h-5" />, group: 'data' },
+    { id: 'categories', label: t('nav.categories', 'الفئات الحيوانية'), icon: <Beef className="w-5 h-5" />, group: 'data' },
+    { id: 'barns', label: t('nav.barns', 'العنابر والنواحي'), icon: <Home className="w-5 h-5" />, group: 'data' },
+    { id: 'mixers', label: t('nav.mixers', 'المكسرات التفاعلية'), icon: <MixerIcon className="w-5 h-5" />, group: 'data' },
 
-    { id: 'settings', label: 'إعدادات النظام', icon: <Settings className="w-5 h-5" />, group: 'system' },
+    { id: 'settings', label: t('nav.settings', 'إعدادات النظام'), icon: <Settings className="w-5 h-5" />, group: 'system' },
+    { id: 'developer_contact', label: t('nav.developer_contact', 'المطور والتواصل'), icon: <UserCheck className="w-5 h-5" />, group: 'system' },
   ];
 
   const handleSelect = (tab: ActiveTab) => {
     setActiveTab(tab);
-    onClose();
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      onClose();
+    }
   };
 
   return (
@@ -69,15 +80,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Mobile backdrop */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 lg:hidden transition-opacity"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 lg:hidden transition-opacity print:hidden"
           onClick={onClose}
         />
       )}
 
       {/* Sidebar Container */}
       <aside
-        className={`fixed top-0 bottom-0 right-0 z-50 w-72 bg-emerald-950 text-emerald-50 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out lg:translate-x-0 print:hidden ${
-          isOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0'
+        className={`fixed top-0 bottom-0 z-50 w-72 bg-emerald-950 text-emerald-50 shadow-2xl flex flex-col transition-transform duration-300 ease-in-out print:hidden ${
+          isRtl ? 'right-0' : 'left-0'
+        } ${
+          isOpen
+            ? 'translate-x-0'
+            : isRtl
+            ? 'translate-x-full'
+            : '-translate-x-full'
         }`}
       >
         {/* Brand Header */}
@@ -88,17 +105,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
             <div>
               <h1 className="font-bold text-base text-emerald-100 leading-snug truncate max-w-[170px]">
-                {farmName || 'مزرعة الماشية'}
+                {farmName || (language === 'en' ? 'Livestock Farm' : 'مزرعة الماشية')}
               </h1>
-              <p className="text-xs text-amber-300/80 font-medium">نظام التغذية والعلائق</p>
+              <p className="text-xs text-amber-300/80 font-medium">
+                {language === 'en' ? 'Feed & Ration System' : 'نظام التغذية والعلائق'}
+              </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg text-emerald-300 hover:text-white hover:bg-emerald-800 lg:hidden"
-            title="إغلاق القائمة"
+            className="p-1.5 rounded-xl text-emerald-300 hover:text-white hover:bg-emerald-800/80 transition-all cursor-pointer"
+            title={language === 'en' ? 'Close sidebar (Ctrl + B)' : 'طي القائمة الجانبية (Ctrl + B)'}
+            aria-label="Toggle sidebar"
           >
-            <X className="w-5 h-5" />
+            {isRtl ? <PanelRightClose className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
           </button>
         </div>
 
@@ -107,7 +128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Operations group */}
           <div>
             <div className="px-3 mb-2 text-[11px] font-bold text-emerald-400/70 tracking-wider uppercase">
-              التشغيل والإنتاج اليومي
+              {t('group.operations', 'التشغيل والإنتاج اليومي')}
             </div>
             <div className="space-y-1">
               {menuItems
@@ -137,7 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Master data group */}
           <div>
             <div className="px-3 mb-2 text-[11px] font-bold text-emerald-400/70 tracking-wider uppercase">
-              قواعد البيانات والمدخلات
+              {t('group.data', 'قواعد البيانات والمدخلات')}
             </div>
             <div className="space-y-1">
               {menuItems
@@ -167,7 +188,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* System group */}
           <div>
             <div className="px-3 mb-2 text-[11px] font-bold text-emerald-400/70 tracking-wider uppercase">
-              النظام والضبط
+              {t('group.system', 'النظام والضبط')}
             </div>
             <div className="space-y-1">
               {menuItems
@@ -197,8 +218,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Footer info */}
         <div className="p-4 border-t border-emerald-900 bg-emerald-950/80 text-xs text-emerald-300/70 text-center">
-          <p className="font-semibold text-emerald-200">إدارة التغذية والمكسرات</p>
-          <p className="mt-0.5 text-[11px]">نسخة العمليات الاحترافية - RTL</p>
+          <p className="font-semibold text-emerald-200">
+            {language === 'en' ? 'Feed & TMR Mixer Management' : 'إدارة التغذية والمكاسر'}
+          </p>
+          <p className="mt-0.5 text-[11px]">
+            {language === 'en' ? 'Professional Operations Edition' : 'نسخة العمليات الاحترافية'}
+          </p>
         </div>
       </aside>
     </>

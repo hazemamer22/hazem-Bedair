@@ -17,6 +17,7 @@ import {
   initialMixers,
   initialDailyPlan,
   initialSettings,
+  getInitialDemoData,
 } from '../data/initialData';
 import { calculateBarnDailyDemand, doesBatchBelongToCategory } from '../utils/calculations';
 import { generateId } from '../utils/idGenerator';
@@ -66,43 +67,100 @@ function setItem<T>(key: string, value: T): void {
 }
 
 export function loadRawMaterials(): RawMaterial[] {
-  return getItem<RawMaterial[]>(KEYS.RAW_MATERIALS, initialRawMaterials);
+  const loaded = getItem<any>(KEYS.RAW_MATERIALS, initialRawMaterials);
+  if (Array.isArray(loaded) && loaded.length > 0) return loaded;
+  if (loaded && typeof loaded === 'object') {
+    const vals = Array.isArray(loaded.rawMaterials) ? loaded.rawMaterials : Object.values(loaded);
+    if (Array.isArray(vals) && vals.length > 0 && (vals[0] as any)?.name) {
+      setItem(KEYS.RAW_MATERIALS, vals);
+      return vals as RawMaterial[];
+    }
+  }
+  return initialRawMaterials;
 }
 
 export function saveRawMaterials(items: RawMaterial[]): void {
-  setItem(KEYS.RAW_MATERIALS, items);
+  if (Array.isArray(items)) {
+    setItem(KEYS.RAW_MATERIALS, items);
+  }
 }
 
 export function loadRations(): Ration[] {
-  return getItem<Ration[]>(KEYS.RATIONS, initialRations);
+  const loaded = getItem<any>(KEYS.RATIONS, initialRations);
+  if (Array.isArray(loaded) && loaded.length > 0) return loaded;
+  if (loaded && typeof loaded === 'object') {
+    const vals = Array.isArray(loaded.rations) ? loaded.rations : Object.values(loaded);
+    if (Array.isArray(vals) && vals.length > 0 && (vals[0] as any)?.name) {
+      setItem(KEYS.RATIONS, vals);
+      return vals as Ration[];
+    }
+  }
+  return initialRations;
 }
 
 export function saveRations(items: Ration[]): void {
-  setItem(KEYS.RATIONS, items);
+  if (Array.isArray(items)) {
+    setItem(KEYS.RATIONS, items);
+  }
 }
 
 export function loadCategories(): AnimalCategory[] {
-  return getItem<AnimalCategory[]>(KEYS.CATEGORIES, initialCategories);
+  const loaded = getItem<any>(KEYS.CATEGORIES, initialCategories);
+  if (Array.isArray(loaded) && loaded.length > 0) return loaded;
+  if (loaded && typeof loaded === 'object') {
+    const vals = Array.isArray(loaded.categories) ? loaded.categories : Object.values(loaded);
+    if (Array.isArray(vals) && vals.length > 0 && (vals[0] as any)?.name) {
+      setItem(KEYS.CATEGORIES, vals);
+      return vals as AnimalCategory[];
+    }
+  }
+  return initialCategories;
 }
 
 export function saveCategories(items: AnimalCategory[]): void {
-  setItem(KEYS.CATEGORIES, items);
+  if (Array.isArray(items)) {
+    setItem(KEYS.CATEGORIES, items);
+  }
 }
 
 export function loadBarns(): Barn[] {
-  return getItem<Barn[]>(KEYS.BARNS, initialBarns);
+  const loaded = getItem<any>(KEYS.BARNS, initialBarns);
+  const arr: Barn[] = Array.isArray(loaded) && loaded.length > 0
+    ? loaded
+    : (loaded && typeof loaded === 'object' && Array.isArray(loaded.barns)
+        ? loaded.barns
+        : initialBarns);
+  return [...arr].sort((a, b) => {
+    const orderA = a.orderIndex !== undefined ? a.orderIndex : 9999;
+    const orderB = b.orderIndex !== undefined ? b.orderIndex : 9999;
+    return orderA - orderB;
+  });
 }
 
 export function saveBarns(items: Barn[]): void {
-  setItem(KEYS.BARNS, items);
+  if (Array.isArray(items)) {
+    const ordered = items.map((b, idx) => ({ ...b, orderIndex: idx + 1 }));
+    setItem(KEYS.BARNS, ordered);
+  }
 }
 
 export function loadMixers(): Mixer[] {
-  return getItem<Mixer[]>(KEYS.MIXERS, initialMixers);
+  const loaded = getItem<any>(KEYS.MIXERS, initialMixers);
+  if (Array.isArray(loaded) && loaded.length > 0) return loaded;
+  if (loaded && typeof loaded === 'object') {
+    const vals = Array.isArray(loaded.mixers) ? loaded.mixers : Object.values(loaded);
+    if (Array.isArray(vals) && vals.length > 0 && (vals[0] as any)?.name) {
+      setItem(KEYS.MIXERS, vals);
+      return vals as Mixer[];
+    }
+  }
+  return initialMixers;
 }
 
 export function saveMixers(items: Mixer[]): void {
-  setItem(KEYS.MIXERS, items);
+  if (Array.isArray(items)) {
+    setItem(KEYS.MIXERS, items);
+  }
 }
 
 export function loadSettings(): FarmSettings {
@@ -271,6 +329,28 @@ export function sanitizeBatches(
           };
         });
       } else {
+        // If there are newly added barns in catBarns not present in this batch, check if they exist in other batches
+        catBarns.forEach((barn) => {
+          const existsInBatch = validAllocations.some((a) => a.barnId === barn.id);
+          if (!existsInBatch) {
+            // Check if this barn is allocated in any other batch in catBatches
+            const allocatedElsewhere = catBatches.some((otherB) =>
+              (otherB.allocations || []).some((oa) => oa.barnId === barn.id && (oa.allocatedPercent || 0) > 0)
+            );
+            if (!allocatedElsewhere) {
+              // Automatically allocate 100% divided among batches or to the first batch
+              const sharePercent = Math.round((100 / Math.max(1, catBatches.length)) * 10) / 10;
+              const demand = calculateBarnDailyDemand(barn, categories, rations, plan);
+              validAllocations.push({
+                barnId: barn.id,
+                allocatedPercent: sharePercent,
+                allocatedKg: Math.round(((demand * sharePercent) / 100) * 1000) / 1000,
+              });
+              changed = true;
+            }
+          }
+        });
+
         // Re-calculate allocatedKg from demand and percentage if not set or mismatched
         validAllocations = validAllocations.map((a) => {
           const barn = catBarns.find((cb) => cb.id === a.barnId);
@@ -286,6 +366,15 @@ export function sanitizeBatches(
           };
         });
       }
+
+      // Sort allocations strictly according to barn.orderIndex
+      validAllocations.sort((a, b) => {
+        const barnA = barns.find((bn) => bn.id === a.barnId);
+        const barnB = barns.find((bn) => bn.id === b.barnId);
+        const orderA = barnA?.orderIndex !== undefined ? barnA.orderIndex : 9999;
+        const orderB = barnB?.orderIndex !== undefined ? barnB.orderIndex : 9999;
+        return orderA - orderB;
+      });
 
       const totalAllocatedWeight = validAllocations.reduce((sum, a) => sum + a.allocatedKg, 0);
       const currentTargetW = Number(b.targetWeightKg) || 0;
@@ -445,16 +534,23 @@ export function getAllPlanDates(): string[] {
   return keys.sort().reverse();
 }
 
-export function resetAllDataToDemo(): void {
-  setItem(KEYS.RAW_MATERIALS, initialRawMaterials);
-  setItem(KEYS.RATIONS, initialRations);
-  setItem(KEYS.CATEGORIES, initialCategories);
-  setItem(KEYS.BARNS, initialBarns);
-  setItem(KEYS.MIXERS, initialMixers);
-  setItem(KEYS.SETTINGS, initialSettings);
+export function resetAllDataToDemo(language: 'ar' | 'en' = 'ar', customSettings?: Partial<FarmSettings>): void {
+  const demo = getInitialDemoData(language);
+  const finalSettings: FarmSettings = {
+    ...demo.settings,
+    ...(customSettings || {}),
+    language,
+  };
+
+  setItem(KEYS.RAW_MATERIALS, demo.rawMaterials);
+  setItem(KEYS.RATIONS, demo.rations);
+  setItem(KEYS.CATEGORIES, demo.categories);
+  setItem(KEYS.BARNS, demo.barns);
+  setItem(KEYS.MIXERS, demo.mixers);
+  setItem(KEYS.SETTINGS, finalSettings);
 
   const todayStr = new Date().toISOString().split('T')[0];
-  const initialPlanWithToday = { ...initialDailyPlan, date: todayStr };
+  const initialPlanWithToday = { ...demo.dailyPlan, date: todayStr };
   const plans: Record<string, DailyOperationPlan> = { [todayStr]: initialPlanWithToday };
   setItem(KEYS.DAILY_PLANS, plans);
 }

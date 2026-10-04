@@ -1,5 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import {
+  useLanguage,
+  getMaterialDisplayName,
+  getMaterialTypeDisplayName,
+  getUnitDisplayName,
+} from '../../context/LanguageContext';
+import {
   DailyOperationPlan,
   AnimalCategory,
   Ration,
@@ -43,6 +49,7 @@ import {
   Calendar,
   X,
   Sparkles,
+  Eye,
 } from 'lucide-react';
 
 interface WarehouseViewProps {
@@ -55,6 +62,7 @@ interface WarehouseViewProps {
   settings?: FarmSettings;
   barns?: Barn[];
   onPrint?: () => void;
+  onOpenPrintPreview?: () => void;
 }
 
 export const WarehouseView: React.FC<WarehouseViewProps> = ({
@@ -67,8 +75,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   settings,
   barns = [],
   onPrint,
+  onOpenPrintPreview,
 }) => {
   const { showToast, showConfirm } = useFeedback();
+  const { language, isRtl, t } = useLanguage();
+  const isEn = language === 'en';
   // Load all plans for chronological roll-forward
   const allPlans = useMemo(() => loadAllDailyPlans(), [dailyPlan]);
 
@@ -173,7 +184,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       const { openingStockKg, ...rest } = currentStates[rawMaterialId];
       currentStates[rawMaterialId] = rest;
       setDailyPlan({ ...dailyPlan, warehouseState: currentStates });
-      showNotification('تمت استعادة الرصيد المرحل التلقائي من اليوم السابق', 'info');
+      showNotification(
+        isEn
+          ? 'Restored carried-forward opening balance from previous day'
+          : 'تمت استعادة الرصيد المرحل التلقائي من اليوم السابق',
+        'info'
+      );
     }
   };
 
@@ -184,7 +200,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       const { manualIssuedKg, ...rest } = currentStates[rawMaterialId];
       currentStates[rawMaterialId] = rest;
       setDailyPlan({ ...dailyPlan, warehouseState: currentStates });
-      showNotification('تمت استعادة المنصرف المحسوب من لفات المكسر', 'info');
+      showNotification(
+        isEn
+          ? 'Restored calculated issued amount from mixer batches'
+          : 'تمت استعادة المنصرف المحسوب من لفات المكسر',
+        'info'
+      );
     }
   };
 
@@ -193,7 +214,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     e.preventDefault();
     const qtyNum = parseFloat(receiptQuantity);
     if (isNaN(qtyNum) || qtyNum <= 0) {
-      showToast('يرجى إدخال كمية وارد صحيحة', 'warning');
+      showToast(isEn ? 'Please enter a valid incoming quantity' : 'يرجى إدخال كمية وارد صحيحة', 'warning');
       return;
     }
 
@@ -210,7 +231,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       invoiceNumber: receiptInvoice.trim() || undefined,
       vehicleNumber: receiptVehicle.trim() || undefined,
       notes: receiptNotes.trim() || undefined,
-      createdAt: new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }),
+      createdAt: new Date().toLocaleTimeString(isEn ? 'en-US' : 'ar-EG', { hour: '2-digit', minute: '2-digit' }),
     };
 
     const currentTxs = [...(dailyPlan.warehouseTransactions || []), newTx];
@@ -243,7 +264,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     setIsReceiptModalOpen(false);
 
     showNotification(
-      `تم تسجيل إذن توريد ${qtyKg.toLocaleString()} كجم من (${targetMaterial?.name || 'الخامة'}) بنجاح وترحيلها للرصيد`
+      isEn
+        ? `Successfully registered goods receipt of ${qtyKg.toLocaleString()} kg for (${targetMaterial?.name || 'Material'})`
+        : `تم تسجيل إذن توريد ${qtyKg.toLocaleString()} كجم من (${targetMaterial?.name || 'الخامة'}) بنجاح وترحيلها للرصيد`
     );
   };
 
@@ -252,7 +275,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     e.preventDefault();
     const qtyNum = parseFloat(adjustQuantity);
     if (isNaN(qtyNum) || qtyNum < 0) {
-      showToast('يرجى إدخال كمية صحيحة', 'warning');
+      showToast(isEn ? 'Please enter a valid quantity' : 'يرجى إدخال كمية صحيحة', 'warning');
       return;
     }
 
@@ -260,10 +283,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
     if (adjustType === 'WASTE') {
       updateMaterialState(adjustMaterialId, { wasteKg: qtyNum });
-      showNotification(`تم تسجيل هالك وفاقد قدره ${qtyNum.toLocaleString()} كجم من (${targetMaterial?.name})`);
+      showNotification(
+        isEn
+          ? `Recorded waste / spoilage of ${qtyNum.toLocaleString()} kg for (${targetMaterial?.name})`
+          : `تم تسجيل هالك وفاقد قدره ${qtyNum.toLocaleString()} كجم من (${targetMaterial?.name})`
+      );
     } else {
       updateMaterialState(adjustMaterialId, { openingStockKg: qtyNum });
-      showNotification(`تم اعتماد التسوية الجردية للرصيد الفعلي (${qtyNum.toLocaleString()} كجم) لخامة (${targetMaterial?.name})`);
+      showNotification(
+        isEn
+          ? `Approved physical inventory count of (${qtyNum.toLocaleString()} kg) for (${targetMaterial?.name})`
+          : `تم اعتماد التسوية الجردية للرصيد الفعلي (${qtyNum.toLocaleString()} كجم) لخامة (${targetMaterial?.name})`
+      );
     }
 
     setAdjustQuantity('');
@@ -274,10 +305,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Delete Transaction
   const handleDeleteTransaction = (txId: string) => {
     showConfirm({
-      title: 'حذف حركة مخزن',
-      message: 'هل أنت متأكد من حذف هذه الحركة؟',
+      title: isEn ? 'Delete Warehouse Entry' : 'حذف حركة مخزن',
+      message: isEn ? 'Are you sure you want to delete this warehouse entry?' : 'هل أنت متأكد من حذف هذه الحركة؟',
       isDanger: true,
-      confirmText: 'حذف',
+      confirmText: isEn ? 'Delete' : 'حذف',
       onConfirm: () => {
         const currentTxs = (dailyPlan.warehouseTransactions || []).filter((t) => t.id !== txId);
         const targetTx = (dailyPlan.warehouseTransactions || []).find((t) => t.id === txId);
@@ -300,7 +331,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             warehouseState: currentStates,
           });
 
-          showNotification('تم حذف الحركة وتحديث رصيد المخزن', 'info');
+          showNotification(
+            isEn ? 'Transaction deleted and warehouse stock updated' : 'تم حذف الحركة وتحديث رصيد المخزن',
+            'info'
+          );
         }
       },
     });
@@ -317,7 +351,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         };
       });
       setRawMaterials(updated);
-      showNotification('تم حفظ واعتماد وتثبيت أرصدة المخزن بنجاح!');
+      showNotification(
+        isEn
+          ? 'Warehouse inventory balances saved and committed successfully!'
+          : 'تم حفظ واعتماد وتثبيت أرصدة المخزن بنجاح!'
+      );
     }
   };
 
@@ -358,11 +396,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   const todayTransactions = dailyPlan.warehouseTransactions || [];
 
   return (
-    <div className="space-y-6 text-right" dir="rtl">
+    <div className={`space-y-6 ${isEn ? 'text-left' : 'text-right'}`} dir={isRtl ? 'rtl' : 'ltr'}>
       {/* Printable Header */}
       <PrintHeader
-        documentTitle="إذن صرف وتقرير دفتر أستاذ المخزن اليومي للخامات العلفية"
-        documentSubtitle="متابعة الرصيد السابق + الوارد الجديد - المنصرف اليومي - الهالك = الرصيد المتبقي المرحل"
+        documentTitle={
+          isEn
+            ? 'Feed Warehouse Ledger & Daily Dispense Note'
+            : 'إذن صرف وتقرير دفتر أستاذ المخزن اليومي للخامات العلفية'
+        }
+        documentSubtitle={
+          isEn
+            ? 'Opening Stock + New Receipts - Daily Mixer Dispensed - Waste = Carried Closing Stock'
+            : 'متابعة الرصيد السابق + الوارد الجديد - المنصرف اليومي - الهالك = الرصيد المتبقي المرحل'
+        }
         selectedDate={dailyPlan.date}
         settings={settings}
       />
@@ -376,13 +422,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                <span>إدارة وحسابات أرصدة المخزن المرحّلة</span>
+                <span>{isEn ? 'Feed Warehouse & Rolled Inventory Ledger' : 'إدارة وحسابات أرصدة المخزن المرحّلة'}</span>
                 <span className="text-xs font-bold bg-emerald-100 text-emerald-900 px-2.5 py-0.5 rounded-full border border-emerald-300">
                   {dailyPlan.date}
                 </span>
               </h2>
               <p className="text-xs font-semibold text-slate-500 mt-0.5">
-                نظام دفتر أستاذ متكامل: الأرصدة والواردات تترحل تلقائياً بين الأيام مع احتساب كفاية المخزون
+                {isEn
+                  ? 'Perpetual inventory ledger: Stocks and receipts automatically roll forward across operational days with coverage analysis'
+                  : 'نظام دفتر أستاذ متكامل: الأرصدة والواردات تترحل تلقائياً بين الأيام مع احتساب كفاية المخزون'}
               </p>
             </div>
           </div>
@@ -398,7 +446,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-xs cursor-pointer"
             >
               <PackagePlus className="w-4 h-4" />
-              <span>إذن توريد وارد جديد</span>
+              <span>{isEn ? '+ New Goods Receipt' : 'إذن توريد وارد جديد'}</span>
             </button>
 
             <button
@@ -410,24 +458,36 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-200 cursor-pointer"
             >
               <Scale className="w-4 h-4 text-slate-600" />
-              <span>هالك / تسوية جردية</span>
+              <span>{isEn ? 'Spoilage / Audit' : 'هالك / تسوية جردية'}</span>
             </button>
 
             <button
               type="button"
               onClick={handleSyncMasterStock}
               className="px-4 py-2.5 bg-emerald-900 hover:bg-emerald-950 text-emerald-100 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer"
-              title="تثبيت الأرصدة في قاعدة البيانات"
+              title={isEn ? 'Lock and commit stock balances into database' : 'تثبيت الأرصدة في قاعدة البيانات'}
             >
               <Save className="w-4 h-4 text-amber-400" />
-              <span>حفظ واعتماد الأرصدة</span>
+              <span>{isEn ? 'Save & Lock Stock' : 'حفظ واعتماد الأرصدة'}</span>
             </button>
+
+            {onOpenPrintPreview && (
+              <button
+                type="button"
+                onClick={onOpenPrintPreview}
+                className="px-3.5 py-2.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-emerald-700/60 shadow-xs"
+                title={isEn ? 'Preview A4 print layout' : 'معاينة إذن الصرف وتقرير المخزن A4 قبل الطباعة'}
+              >
+                <Eye className="w-4 h-4 text-emerald-300" />
+                <span>{isEn ? 'Print Preview' : 'معاينة الطباعة'}</span>
+              </button>
+            )}
 
             <button
               type="button"
               onClick={onPrint || (() => window.print())}
               className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-all border border-slate-200 cursor-pointer"
-              title="طباعة إذن الصرف وتقرير المخزن"
+              title={isEn ? 'Print warehouse ledger' : 'طباعة إذن الصرف وتقرير المخزن'}
             >
               <Printer className="w-4 h-4" />
             </button>
@@ -442,7 +502,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   barns
                 )
               }
-              label="تصدير المخزن للإكسيل"
+              label={isEn ? 'Warehouse Excel' : 'تصدير المخزن للإكسيل'}
               variant="secondary"
               size="sm"
             />
@@ -475,7 +535,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>دفتر حسابات المخزن اليومي</span>
+            <span>{isEn ? 'Daily Inventory Ledger' : 'دفتر حسابات المخزن اليومي'}</span>
           </button>
           <button
             type="button"
@@ -487,7 +547,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             }`}
           >
             <Truck className="w-4 h-4" />
-            <span>أذونات التوريد وحركات اليوم</span>
+            <span>{isEn ? 'Receipts & Daily Movements' : 'أذونات التوريد وحركات اليوم'}</span>
             {todayTransactions.length > 0 && (
               <span className="bg-amber-400 text-emerald-950 px-1.5 py-0.2 rounded-full text-[10px] font-black">
                 {todayTransactions.length}
@@ -501,13 +561,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 print:grid-cols-6 print:gap-2">
         {/* Total Opening */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-1">
-          <span className="text-[11px] font-bold text-slate-500">الرصيد السابق (المرحّل)</span>
+          <span className="text-[11px] font-bold text-slate-500">
+            {isEn ? 'Carried Opening Stock' : 'الرصيد السابق (المرحّل)'}
+          </span>
           <div className="text-lg font-black text-slate-900">
             {(totalOpeningKg / 1000).toFixed(2)}{' '}
-            <span className="text-xs font-normal text-slate-500">طن</span>
+            <span className="text-xs font-normal text-slate-500">{isEn ? 'ton' : 'طن'}</span>
           </div>
           <span className="text-[10px] text-slate-400 font-semibold block truncate">
-            {totalOpeningKg.toLocaleString()} كجم
+            {totalOpeningKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
           </span>
         </div>
 
@@ -515,14 +577,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-2xs space-y-1">
           <span className="text-[11px] font-bold text-emerald-800 flex items-center gap-1">
             <PackagePlus className="w-3 h-3 text-emerald-600" />
-            <span>الوارد اليومي الجديد</span>
+            <span>{isEn ? 'Daily Incoming' : 'الوارد اليومي الجديد'}</span>
           </span>
           <div className="text-lg font-black text-emerald-900">
             {(totalIncomingKg / 1000).toFixed(2)}{' '}
-            <span className="text-xs font-normal text-emerald-700">طن</span>
+            <span className="text-xs font-normal text-emerald-700">{isEn ? 'ton' : 'طن'}</span>
           </div>
           <span className="text-[10px] text-emerald-700 font-semibold block truncate">
-            +{totalIncomingKg.toLocaleString()} كجم
+            +{totalIncomingKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
           </span>
         </div>
 
@@ -530,14 +592,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         <div className="bg-white p-4 rounded-2xl border border-blue-200 bg-blue-50/20 shadow-2xs space-y-1">
           <span className="text-[11px] font-bold text-blue-800 flex items-center gap-1">
             <ArrowDownRight className="w-3 h-3 text-blue-600" />
-            <span>المنصرف للمكسر</span>
+            <span>{isEn ? 'Mixer Dispensed' : 'المنصرف للمكسر'}</span>
           </span>
           <div className="text-lg font-black text-blue-950">
             {(totalIssuedKg / 1000).toFixed(2)}{' '}
-            <span className="text-xs font-normal text-blue-700">طن</span>
+            <span className="text-xs font-normal text-blue-700">{isEn ? 'ton' : 'طن'}</span>
           </div>
           <span className="text-[10px] text-blue-700 font-semibold block truncate">
-            المطلوب: {totalRequiredKg.toLocaleString()} كجم
+            {isEn ? 'Required:' : 'المطلوب:'} {totalRequiredKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
           </span>
         </div>
 
@@ -545,26 +607,28 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
           <span className="text-[11px] font-bold text-rose-700 flex items-center gap-1">
             <TrendingDown className="w-3 h-3 text-rose-500" />
-            <span>الهالك والفاقد</span>
+            <span>{isEn ? 'Spoilage & Waste' : 'الهالك والفاقد'}</span>
           </span>
           <div className="text-lg font-black text-rose-900">
             {totalWasteKg > 0 ? (totalWasteKg / 1000).toFixed(2) : '0.00'}{' '}
-            <span className="text-xs font-normal text-slate-500">طن</span>
+            <span className="text-xs font-normal text-slate-500">{isEn ? 'ton' : 'طن'}</span>
           </div>
           <span className="text-[10px] text-slate-500 font-semibold block truncate">
-            {totalWasteKg.toLocaleString()} كجم
+            {totalWasteKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
           </span>
         </div>
 
         {/* Total Ending Stock */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs space-y-1">
-          <span className="text-[11px] font-bold text-slate-700">الرصيد المتبقي بالمخزن</span>
+          <span className="text-[11px] font-bold text-slate-700">
+            {isEn ? 'Closing Stock Balance' : 'الرصيد المتبقي بالمخزن'}
+          </span>
           <div className="text-lg font-black text-slate-900">
             {(totalClosingKg / 1000).toFixed(2)}{' '}
-            <span className="text-xs font-normal text-slate-500">طن</span>
+            <span className="text-xs font-normal text-slate-500">{isEn ? 'ton' : 'طن'}</span>
           </div>
           <span className="text-[10px] text-slate-500 font-semibold block truncate">
-            {totalClosingKg.toLocaleString()} كجم
+            {totalClosingKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
           </span>
         </div>
 
@@ -576,13 +640,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         }`}>
           <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
             {criticalCount > 0 && <AlertTriangle className="w-3 h-3 text-rose-600" />}
-            <span>حالة المخزون</span>
+            <span>{isEn ? 'Inventory Status' : 'حالة المخزون'}</span>
           </span>
           <div className={`text-lg font-black ${criticalCount > 0 ? 'text-rose-700' : 'text-emerald-800'}`}>
-            {criticalCount > 0 ? `${criticalCount} خامات حرجة` : 'مستقر وآمن'}
+            {criticalCount > 0
+              ? isEn
+                ? `${criticalCount} Critical Feeds`
+                : `${criticalCount} خامات حرجة`
+              : isEn
+              ? 'Stable & Secure'
+              : 'مستقر وآمن'}
           </div>
           <span className="text-[10px] text-slate-600 font-semibold block truncate">
-            تكلفة اليوم: {totalCostToday.toLocaleString()} {settings?.currency || 'ج.م'}
+            {isEn ? 'Today Cost:' : 'تكلفة اليوم:'} {totalCostToday.toLocaleString()} {settings?.currency || (isEn ? 'USD' : 'ج.م')}
           </span>
         </div>
       </div>
@@ -593,14 +663,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-rose-900 font-black text-sm">
               <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-              <span>تنبيه عاجل: نقص ونفاد في أرصدة خامات المخزن ({lowStockAlerts.length} خامة تحت حد الأمان)</span>
+              <span>
+                {isEn
+                  ? `Urgent Notice: Feeds below safety reorder threshold (${lowStockAlerts.length} materials affected)`
+                  : `تنبيه عاجل: نقص ونفاد في أرصدة خامات المخزن (${lowStockAlerts.length} خامة تحت حد الأمان)`}
+              </span>
             </div>
             <button
               type="button"
               onClick={() => setFilterMode('CRITICAL')}
-              className="text-xs font-bold text-rose-700 bg-rose-100 hover:bg-rose-200 px-3 py-1 rounded-xl transition-colors"
+              className="text-xs font-bold text-rose-700 bg-rose-100 hover:bg-rose-200 px-3 py-1 rounded-xl transition-colors cursor-pointer"
             >
-              عرض الخامات الحرجة فقط
+              {isEn ? 'Filter Critical Materials' : 'عرض الخامات الحرجة فقط'}
             </button>
           </div>
 
@@ -612,17 +686,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               >
                 <div>
                   <div className="font-black text-slate-900 flex items-center gap-1.5">
-                    <span>{alert.name}</span>
+                    <span>{getMaterialDisplayName(alert.name, isEn)}</span>
                     <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-1.5 py-0.5 rounded">
                       {alert.currentStockKg < alert.dailyRequiredKg
-                        ? `عجز ${(alert.dailyRequiredKg - alert.currentStockKg).toLocaleString()} كجم اليوم`
+                        ? isEn
+                          ? `Deficit ${(alert.dailyRequiredKg - alert.currentStockKg).toLocaleString()} kg`
+                          : `عجز ${(alert.dailyRequiredKg - alert.currentStockKg).toLocaleString()} كجم اليوم`
                         : alert.currentStockKg <= alert.minStockKg
-                        ? 'تحت حد الأمان'
+                        ? isEn
+                          ? 'Below Safety Level'
+                          : 'تحت حد الأمان'
+                        : isEn
+                        ? 'Critical Stock'
                         : 'مخزون حرج'}
                     </span>
                   </div>
                   <div className="text-[11px] text-slate-500 mt-1">
-                    الرصيد: <strong className="text-slate-800">{alert.currentStockKg.toLocaleString()} كجم</strong> | المطلوب اليوم: <strong className="text-slate-800">{alert.dailyRequiredKg.toLocaleString()} كجم</strong>
+                    {isEn ? 'Stock:' : 'الرصيد:'} <strong className="text-slate-800">{alert.currentStockKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}</strong> | {isEn ? 'Demand Today:' : 'المطلوب اليوم:'} <strong className="text-slate-800">{alert.dailyRequiredKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}</strong>
                   </div>
                 </div>
                 <div className="text-left">
@@ -635,7 +715,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       ? 'bg-amber-500 text-white'
                       : 'bg-slate-100 text-slate-700'
                   }`}>
-                    {alert.daysRemaining <= 0 ? 'نفد تماماً' : `يكفي ${alert.daysRemaining} يوم`}
+                    {alert.daysRemaining <= 0
+                      ? isEn
+                        ? 'Depleted'
+                        : 'نفد تماماً'
+                      : isEn
+                      ? `Lasts ${alert.daysRemaining} d`
+                      : `يكفي ${alert.daysRemaining} يوم`}
                   </span>
                 </div>
               </div>
@@ -660,7 +746,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                جميع خامات المخزن ({ledgerItems.length})
+                {isEn ? `All Warehouse Feeds (${ledgerItems.length})` : `جميع خامات المخزن (${ledgerItems.length})`}
               </button>
               <button
                 type="button"
@@ -671,7 +757,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                المطلوبة بالخلطات اليوم ({ledgerItems.filter((i) => i.requiredDailyKg > 0).length})
+                {isEn
+                  ? `Required in Formulations (${ledgerItems.filter((i) => i.requiredDailyKg > 0).length})`
+                  : `المطلوبة بالخلطات اليوم (${ledgerItems.filter((i) => i.requiredDailyKg > 0).length})`}
               </button>
               <button
                 type="button"
@@ -683,45 +771,57 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 }`}
               >
                 <AlertTriangle className="w-3 h-3 text-rose-600" />
-                <span>حرجة وتحت حد الأمان ({criticalCount})</span>
+                <span>
+                  {isEn
+                    ? `Critical & Below Safety (${criticalCount})`
+                    : `حرجة وتحت حد الأمان (${criticalCount})`}
+                </span>
               </button>
             </div>
 
             {/* Search Input */}
             <div className="relative w-full md:w-64">
-              <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+              <Search className={`w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 ${isEn ? 'left-3' : 'right-3'}`} />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="بحث باسم أو كود الخامة..."
-                className="w-full pl-3 pr-9 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-emerald-600 focus:bg-white transition-all"
+                placeholder={isEn ? 'Search feed name or code...' : 'بحث باسم أو كود الخامة...'}
+                className={`w-full py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-emerald-600 focus:bg-white transition-all ${
+                  isEn ? 'pl-9 pr-3' : 'pr-9 pl-3'
+                }`}
               />
             </div>
           </div>
 
           {/* Ledger Table */}
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-right text-xs">
+            <table className={`w-full text-xs ${isEn ? 'text-left' : 'text-right'}`}>
               <thead className="bg-slate-100/90 text-slate-700 font-bold text-xs border-b border-slate-200">
                 <tr>
-                  <th className="py-3 px-3">الخامة العلفية</th>
-                  <th className="py-3 px-2 text-center">الرصيد السابق (كجم)</th>
-                  <th className="py-3 px-2 text-center bg-emerald-50/50 text-emerald-950">الوارد اليومي (كجم)</th>
-                  <th className="py-3 px-2 text-center bg-slate-50">إجمالي المتاح (كجم)</th>
-                  <th className="py-3 px-2 text-center">المطلوب للخلطات</th>
-                  <th className="py-3 px-2 text-center bg-blue-50/50 text-blue-950">المنصرف الفعلي (كجم)</th>
-                  <th className="py-3 px-2 text-center">الهالك (كجم)</th>
-                  <th className="py-3 px-3 text-center bg-slate-100 font-black">الرصيد المتبقي</th>
-                  <th className="py-3 px-2 text-center">كفاية المخزون</th>
-                  <th className="py-3 px-2 text-center print:hidden">إجراءات</th>
+                  <th className="py-3 px-3">{isEn ? 'Feed Material' : 'الخامة العلفية'}</th>
+                  <th className="py-3 px-2 text-center">{isEn ? 'Opening Stock (kg)' : 'الرصيد السابق (كجم)'}</th>
+                  <th className="py-3 px-2 text-center bg-emerald-50/50 text-emerald-950">
+                    {isEn ? 'Daily Incoming (kg)' : 'الوارد اليومي (كجم)'}
+                  </th>
+                  <th className="py-3 px-2 text-center bg-slate-50">{isEn ? 'Total Available (kg)' : 'إجمالي المتاح (كجم)'}</th>
+                  <th className="py-3 px-2 text-center">{isEn ? 'Mixer Required' : 'المطلوب للخلطات'}</th>
+                  <th className="py-3 px-2 text-center bg-blue-50/50 text-blue-950">
+                    {isEn ? 'Actual Dispensed (kg)' : 'المنصرف الفعلي (كجم)'}
+                  </th>
+                  <th className="py-3 px-2 text-center">{isEn ? 'Waste (kg)' : 'الهالك (كجم)'}</th>
+                  <th className="py-3 px-3 text-center bg-slate-100 font-black">
+                    {isEn ? 'Closing Stock' : 'الرصيد المتبقي'}
+                  </th>
+                  <th className="py-3 px-2 text-center">{isEn ? 'Coverage' : 'كفاية المخزون'}</th>
+                  <th className="py-3 px-2 text-center print:hidden">{isEn ? 'Actions' : 'إجراءات'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredLedger.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="text-center py-10 text-slate-400 font-semibold">
-                      لا توجد خامات مطابقة لشروط البحث والتصفية.
+                      {isEn ? 'No feed materials match your search/filter.' : 'لا توجد خامات مطابقة لشروط البحث والتصفية.'}
                     </td>
                   </tr>
                 ) : (
@@ -733,13 +833,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           <div className="flex items-center gap-2">
                             <div>
                               <div className="font-black text-slate-900 text-sm flex items-center gap-1.5">
-                                <span>{item.name}</span>
+                                <span>{getMaterialDisplayName(item.name, isEn)}</span>
                                 <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">
                                   {item.code}
                                 </span>
                               </div>
                               <span className="text-[10px] text-slate-500 font-semibold">
-                                {item.pricePerKg ? `${item.pricePerKg} ${settings.currency}/كجم` : '—'}
+                                {item.pricePerKg ? `${item.pricePerKg} ${settings?.currency || (isEn ? 'USD' : 'ج.م')}/${isEn ? 'kg' : 'كجم'}` : '—'}
                               </span>
                             </div>
                           </div>
@@ -760,14 +860,18 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   ? 'border-amber-400 bg-amber-50/40 text-amber-900'
                                   : 'border-slate-300 text-slate-800'
                               }`}
-                              title={item.isOpeningOverridden ? 'تم تعديل الرصيد يدوياً' : 'مرحّل تلقائياً من اليوم السابق'}
+                              title={
+                                item.isOpeningOverridden
+                                  ? isEn ? 'Manually adjusted opening balance' : 'تم تعديل الرصيد يدوياً'
+                                  : isEn ? 'Automatically rolled forward from prior day' : 'مرحّل تلقائياً من اليوم السابق'
+                              }
                             />
                             {item.isOpeningOverridden && (
                               <button
                                 type="button"
                                 onClick={() => handleResetOpeningToCarried(item.rawMaterialId)}
-                                className="p-1 text-slate-400 hover:text-emerald-700 rounded-md"
-                                title="استعادة الرصيد المرحل التلقائي"
+                                className="p-1 text-slate-400 hover:text-emerald-700 rounded-md cursor-pointer"
+                                title={isEn ? 'Restore rolled forward balance' : 'استعادة الرصيد المرحل التلقائي'}
                               >
                                 <RotateCcw className="w-3 h-3" />
                               </button>
@@ -795,7 +899,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                 setIsReceiptModalOpen(true);
                               }}
                               className="p-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-md print:hidden cursor-pointer"
-                              title="تسجيل إذن توريد مفصل"
+                              title={isEn ? 'Record goods receipt' : 'تسجيل إذن توريد مفصل'}
                             >
                               <Plus className="w-3 h-3" />
                             </button>
@@ -833,8 +937,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleResetIssuedToCalculated(item.rawMaterialId)}
-                                className="p-1 text-slate-400 hover:text-blue-700 rounded-md"
-                                title="استعادة المنصرف المحسوب تلقائياً"
+                                className="p-1 text-slate-400 hover:text-blue-700 rounded-md cursor-pointer"
+                                title={isEn ? 'Restore calculated mixer demand' : 'استعادة المنصرف المحسوب تلقائياً'}
                               >
                                 <RotateCcw className="w-3 h-3" />
                               </button>
@@ -884,12 +988,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                               }`}
                             >
                               {item.daysRemaining >= 999
-                                ? 'وفير جداً'
-                                : `${item.daysRemaining} يوم`}
+                                ? isEn ? 'Ample' : 'وفير جداً'
+                                : isEn ? `${item.daysRemaining} days` : `${item.daysRemaining} يوم`}
                             </span>
                           ) : (
                             <span className="text-[11px] text-slate-400 font-semibold">
-                              لا استهلاك اليوم
+                              {isEn ? 'No demand today' : 'لا استهلاك اليوم'}
                             </span>
                           )}
                         </td>
@@ -900,10 +1004,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             type="button"
                             onClick={() => setHistoryMaterialId(item.rawMaterialId)}
                             className="p-1.5 text-slate-600 hover:text-emerald-800 hover:bg-emerald-50 rounded-lg border border-slate-200 text-xs font-bold transition-all flex items-center gap-1 mx-auto cursor-pointer"
-                            title="عرض كشف حركة الخامة عبر الأيام"
+                            title={isEn ? 'View material audit history' : 'عرض كشف حركة الخامة عبر الأيام'}
                           >
                             <History className="w-3.5 h-3.5" />
-                            <span>الحركة</span>
+                            <span>{isEn ? 'History' : 'الحركة'}</span>
                           </button>
                         </td>
                       </tr>
@@ -913,16 +1017,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </tbody>
               <tfoot className="bg-slate-100 font-black text-xs border-t-2 border-slate-300">
                 <tr>
-                  <td className="py-3 px-3 text-slate-900">إجمالي كميات المخزن:</td>
+                  <td className="py-3 px-3 text-slate-900">
+                    {isEn ? 'Total Warehouse Quantities:' : 'إجمالي كميات المخزن:'}
+                  </td>
                   <td className="py-3 px-2 text-center">{totalOpeningKg.toLocaleString()}</td>
                   <td className="py-3 px-2 text-center text-emerald-900">+{totalIncomingKg.toLocaleString()}</td>
                   <td className="py-3 px-2 text-center">{(totalOpeningKg + totalIncomingKg).toLocaleString()}</td>
                   <td className="py-3 px-2 text-center">{totalRequiredKg.toLocaleString()}</td>
                   <td className="py-3 px-2 text-center text-blue-900">{totalIssuedKg.toLocaleString()}</td>
                   <td className="py-3 px-2 text-center text-rose-800">{totalWasteKg.toLocaleString()}</td>
-                  <td className="py-3 px-3 text-center text-emerald-950 text-sm">{totalClosingKg.toLocaleString()} كجم</td>
+                  <td className="py-3 px-3 text-center text-emerald-950 text-sm">
+                    {totalClosingKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
+                  </td>
                   <td colSpan={2} className="py-3 px-2 text-center text-slate-600">
-                    التكلفة: {totalCostToday.toLocaleString()} {settings?.currency || 'ج.م'}
+                    {isEn ? 'Cost:' : 'التكلفة:'} {totalCostToday.toLocaleString()} {settings?.currency || (isEn ? 'USD' : 'ج.م')}
                   </td>
                 </tr>
               </tfoot>
@@ -934,8 +1042,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-2xs overflow-hidden space-y-4 p-5">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div>
-              <h3 className="font-bold text-slate-900 text-base">سجل أذونات التوريد والحركات المسجلة ليوم ({dailyPlan.date})</h3>
-              <p className="text-xs text-slate-500 mt-0.5">يمكنك مراجعة كافة شحنات التوريد الواردة للمخزن وإدارتها</p>
+              <h3 className="font-bold text-slate-900 text-base">
+                {isEn
+                  ? `Goods Receipts & Movements Log for (${dailyPlan.date})`
+                  : `سجل أذونات التوريد والحركات المسجلة ليوم (${dailyPlan.date})`}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isEn
+                  ? 'Audit and track all incoming feed shipments and inventory transactions'
+                  : 'يمكنك مراجعة كافة شحنات التوريد الواردة للمخزن وإدارتها'}
+              </p>
             </div>
             <button
               type="button"
@@ -946,32 +1062,36 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>إضافة إذن توريد</span>
+              <span>{isEn ? '+ Add Goods Receipt' : 'إضافة إذن توريد'}</span>
             </button>
           </div>
 
           {todayTransactions.length === 0 ? (
             <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200 space-y-3">
               <Truck className="w-10 h-10 text-slate-400 mx-auto" />
-              <div className="text-sm font-bold text-slate-700">لم يتم تسجيل أذونات توريد واردة لهذا اليوم حتى الآن</div>
+              <div className="text-sm font-bold text-slate-700">
+                {isEn ? 'No goods receipts registered for this day yet' : 'لم يتم تسجيل أذونات توريد واردة لهذا اليوم حتى الآن'}
+              </div>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                يمكنك الضغط على زر "إذن توريد وارد جديد" لتسجيل توريدات الأعلاف والخامات واستلامها فوراً.
+                {isEn
+                  ? 'Click "+ New Goods Receipt" to record incoming feed batches and add them directly to available inventory.'
+                  : 'يمكنك الضغط على زر "إذن توريد وارد جديد" لتسجيل توريدات الأعلاف والخامات واستلامها فوراً.'}
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto border border-slate-200 rounded-xl">
-              <table className="w-full text-right text-xs">
+              <table className={`w-full text-xs ${isEn ? 'text-left' : 'text-right'}`}>
                 <thead className="bg-slate-100 text-slate-700 font-bold text-xs border-b border-slate-200">
                   <tr>
-                    <th className="py-3 px-3">الخامة</th>
-                    <th className="py-3 px-3 text-center">نوع الحركة</th>
-                    <th className="py-3 px-3 text-center">الكمية المستلمة (كجم)</th>
-                    <th className="py-3 px-3 text-center">الكمية (بالطن)</th>
-                    <th className="py-3 px-3">المورد / الشركة</th>
-                    <th className="py-3 px-3">رقم البوليصة / الفاتورة</th>
-                    <th className="py-3 px-3">رقم السيارة / السائق</th>
-                    <th className="py-3 px-3">الوقت والملاحظات</th>
-                    <th className="py-3 px-3 text-center print:hidden">حذف</th>
+                    <th className="py-3 px-3">{isEn ? 'Material' : 'الخامة'}</th>
+                    <th className="py-3 px-3 text-center">{isEn ? 'Type' : 'نوع الحركة'}</th>
+                    <th className="py-3 px-3 text-center">{isEn ? 'Received (kg)' : 'الكمية المستلمة (كجم)'}</th>
+                    <th className="py-3 px-3 text-center">{isEn ? 'Tons' : 'الكمية (بالطن)'}</th>
+                    <th className="py-3 px-3">{isEn ? 'Supplier / Company' : 'المورد / الشركة'}</th>
+                    <th className="py-3 px-3">{isEn ? 'Invoice / Waybill #' : 'رقم البوليصة / الفاتورة'}</th>
+                    <th className="py-3 px-3">{isEn ? 'Vehicle / Driver' : 'رقم السيارة / السائق'}</th>
+                    <th className="py-3 px-3">{isEn ? 'Time & Notes' : 'الوقت والملاحظات'}</th>
+                    <th className="py-3 px-3 text-center print:hidden">{isEn ? 'Delete' : 'حذف'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -980,18 +1100,22 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     return (
                       <tr key={tx.id} className="hover:bg-slate-50 transition-colors">
                         <td className="py-3 px-3 font-black text-slate-900 text-sm">
-                          {mat?.name || 'خامة غير معروفة'}
+                          {mat?.name || (isEn ? 'Unknown Material' : 'خامة غير معروفة')}
                         </td>
                         <td className="py-3 px-3 text-center">
                           <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 rounded-full font-bold text-[10px]">
-                            {tx.type === 'INCOMING' ? 'توريد وارد' : tx.type === 'WASTE' ? 'هالك' : 'تسوية'}
+                            {tx.type === 'INCOMING'
+                              ? isEn ? 'Incoming Receipt' : 'توريد وارد'
+                              : tx.type === 'WASTE'
+                              ? isEn ? 'Waste' : 'هالك'
+                              : isEn ? 'Audit' : 'تسوية'}
                           </span>
                         </td>
                         <td className="py-3 px-3 text-center font-black text-emerald-900 text-sm">
-                          +{tx.quantityKg.toLocaleString()} كجم
+                          +{tx.quantityKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
                         </td>
                         <td className="py-3 px-3 text-center font-bold text-slate-700">
-                          {(tx.quantityKg / 1000).toFixed(2)} طن
+                          {(tx.quantityKg / 1000).toFixed(2)} {isEn ? 'ton' : 'طن'}
                         </td>
                         <td className="py-3 px-3 font-semibold text-slate-700">
                           {tx.supplierName || '—'}
@@ -1010,7 +1134,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                             type="button"
                             onClick={() => handleDeleteTransaction(tx.id)}
                             className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="حذف الحركة"
+                            title={isEn ? 'Delete transaction' : 'حذف الحركة'}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1029,27 +1153,37 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       <PrintSignatures
         settings={settings}
         signatures={[
-          { title: 'أمين المخزن والمستودع', name: settings?.warehouseManagerName || 'أمين المخزن' },
-          { title: 'مهندس التغذية والتشغيل', name: settings?.engineerName || 'مهندس التغذية' },
-          { title: 'المدير المالي والإداري' },
+          {
+            title: isEn ? 'Warehouse & Silo Manager' : 'أمين المخزن والمستودع',
+            name: settings?.warehouseManagerName || (isEn ? 'Warehouse Manager' : 'أمين المخزن'),
+          },
+          {
+            title: isEn ? 'Feeding & Operations Engineer' : 'مهندس التغذية والتشغيل',
+            name: settings?.engineerName || (isEn ? 'Nutrition Engineer' : 'مهندس التغذية'),
+          },
+          {
+            title: isEn ? 'Financial & Admin Director' : 'المدير المالي والإداري',
+          },
         ]}
       />
 
       {/* MODAL 1: Goods Receipt (إذن توريد وارد جديد) */}
       {isReceiptModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 text-right">
+          <div className={`bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-5 ${isEn ? 'text-left' : 'text-right'}`}>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-emerald-100 text-emerald-900 rounded-xl">
                   <PackagePlus className="w-5 h-5" />
                 </div>
-                <h3 className="text-base font-black text-slate-900">تسجيل إذن توريد خامات واردة جديدة</h3>
+                <h3 className="text-base font-black text-slate-900">
+                  {isEn ? 'Register New Feed Goods Receipt Note' : 'تسجيل إذن توريد خامات واردة جديدة'}
+                </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsReceiptModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1058,7 +1192,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <form onSubmit={handleSaveReceipt} className="space-y-4">
               {/* Material Select */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الخامة العلفية المستلمة:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {isEn ? 'Received Feed Material:' : 'الخامة العلفية المستلمة:'}
+                </label>
                 <select
                   value={receiptMaterialId}
                   onChange={(e) => setReceiptMaterialId(e.target.value)}
@@ -1066,7 +1202,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 >
                   {rawMaterials.map((rm) => (
                     <option key={rm.id} value={rm.id}>
-                      {rm.name} ({rm.code}) — الرصيد الحالي: {rm.currentStockKg?.toLocaleString() || 0} كجم
+                      {getMaterialDisplayName(rm.name, isEn)} ({rm.code}) — {isEn ? 'Current Stock:' : 'الرصيد الحالي:'} {rm.currentStockKg?.toLocaleString() || 0} {isEn ? 'kg' : 'كجم'}
                     </option>
                   ))}
                 </select>
@@ -1075,20 +1211,24 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               {/* Quantity and Unit */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">الكمية المستلمة:</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {isEn ? 'Received Quantity:' : 'الكمية المستلمة:'}
+                  </label>
                   <input
                     type="number"
                     step="any"
                     value={receiptQuantity}
                     onChange={(e) => setReceiptQuantity(e.target.value)}
-                    placeholder="مثلاً 25"
+                    placeholder={isEn ? 'e.g. 25' : 'مثلاً 25'}
                     required
                     autoFocus
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-black text-slate-900 focus:outline-emerald-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">الوحدة:</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {isEn ? 'Unit of Measure:' : 'الوحدة:'}
+                  </label>
                   <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl">
                     <button
                       type="button"
@@ -1099,7 +1239,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      طن
+                      {isEn ? 'Tons' : 'طن'}
                     </button>
                     <button
                       type="button"
@@ -1110,7 +1250,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                           : 'text-slate-600 hover:text-slate-900'
                       }`}
                     >
-                      كجم
+                      {isEn ? 'KG' : 'كجم'}
                     </button>
                   </div>
                 </div>
@@ -1119,22 +1259,26 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               {/* Supplier & Invoice */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">اسم المورد / الشركة:</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {isEn ? 'Supplier / Company Name:' : 'اسم المورد / الشركة:'}
+                  </label>
                   <input
                     type="text"
                     value={receiptSupplier}
                     onChange={(e) => setReceiptSupplier(e.target.value)}
-                    placeholder="مثلاً شركة الوادي للأعلاف"
+                    placeholder={isEn ? 'e.g. Valley Feed Co.' : 'مثلاً شركة الوادي للأعلاف'}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-emerald-600"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">رقم البوليصة / الفاتورة:</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    {isEn ? 'Invoice / Waybill #:' : 'رقم البوليصة / الفاتورة:'}
+                  </label>
                   <input
                     type="text"
                     value={receiptInvoice}
                     onChange={(e) => setReceiptInvoice(e.target.value)}
-                    placeholder="مثلاً بوليصة #4892"
+                    placeholder={isEn ? 'e.g. INV-4892' : 'مثلاً بوليصة #4892'}
                     className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-emerald-600"
                   />
                 </div>
@@ -1142,23 +1286,27 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
               {/* Vehicle & Notes */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">رقم السيارة / السائق (اختياري):</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {isEn ? 'Truck / Driver Plate (Optional):' : 'رقم السيارة / السائق (اختياري):'}
+                </label>
                 <input
                   type="text"
                   value={receiptVehicle}
                   onChange={(e) => setReceiptVehicle(e.target.value)}
-                  placeholder="مثلاً سيارة نقل أ ب ج 123"
+                  placeholder={isEn ? 'e.g. Truck ABC-123' : 'مثلاً سيارة نقل أ ب ج 123'}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-emerald-600"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">ملاحظات الاستلام والفحص الجودوي:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {isEn ? 'Quality Inspection & Inspection Notes:' : 'ملاحظات الاستلام والفحص الجودوي:'}
+                </label>
                 <textarea
                   rows={2}
                   value={receiptNotes}
                   onChange={(e) => setReceiptNotes(e.target.value)}
-                  placeholder="مثلاً تم فحص الرطوبة مطابقة للمواصفات..."
+                  placeholder={isEn ? 'Moisture content verified compliant...' : 'مثلاً تم فحص الرطوبة مطابقة للمواصفات...'}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-emerald-600"
                 />
               </div>
@@ -1170,14 +1318,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   onClick={() => setIsReceiptModalOpen(false)}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
-                  إلغاء
+                  {isEn ? 'Cancel' : 'إلغاء'}
                 </button>
                 <button
                   type="submit"
                   className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>اعتماد وتوريد للمخزن</span>
+                  <span>{isEn ? 'Confirm & Receive to Stock' : 'اعتماد وتوريد للمخزن'}</span>
                 </button>
               </div>
             </form>
@@ -1188,18 +1336,20 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* MODAL 2: Waste & Physical Audit (هالك / تسوية جردية) */}
       {isAdjustModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 text-right">
+          <div className={`bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 space-y-5 ${isEn ? 'text-left' : 'text-right'}`}>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="p-2 bg-amber-100 text-amber-900 rounded-xl">
                   <Scale className="w-5 h-5" />
                 </div>
-                <h3 className="text-base font-black text-slate-900">تسجيل هالك أو تسوية جردية</h3>
+                <h3 className="text-base font-black text-slate-900">
+                  {isEn ? 'Log Spoilage or Physical Audit Adjustment' : 'تسجيل هالك أو تسوية جردية'}
+                </h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAdjustModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg"
+                className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -1207,7 +1357,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
             <form onSubmit={handleSaveAdjustment} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الخامة العلفية:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {isEn ? 'Feed Material:' : 'الخامة العلفية:'}
+                </label>
                 <select
                   value={adjustMaterialId}
                   onChange={(e) => setAdjustMaterialId(e.target.value)}
@@ -1215,14 +1367,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                 >
                   {rawMaterials.map((rm) => (
                     <option key={rm.id} value={rm.id}>
-                      {rm.name} ({rm.code})
+                      {getMaterialDisplayName(rm.name, isEn)} ({rm.code})
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">نوع الحركة:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {isEn ? 'Adjustment Type:' : 'نوع الحركة:'}
+                </label>
                 <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
                   <button
                     type="button"
@@ -1233,7 +1387,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    هالك / فاقد (خصم)
+                    {isEn ? 'Waste / Loss (Deduct)' : 'هالك / فاقد (خصم)'}
                   </button>
                   <button
                     type="button"
@@ -1244,7 +1398,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    تسوية جرد فعلي
+                    {isEn ? 'Physical Audit Audit' : 'تسوية جرد فعلي'}
                   </button>
                 </div>
               </div>
@@ -1252,15 +1406,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   {adjustType === 'WASTE'
-                    ? 'كمية الهالك بالكيلوجرام (كجم):'
-                    : 'الرصيد الفعلي بعد الجرد بالكيلوجرام (كجم):'}
+                    ? isEn ? 'Spoilage Quantity (kg):' : 'كمية الهالك بالكيلوجرام (كجم):'
+                    : isEn ? 'Audited Physical Stock (kg):' : 'الرصيد الفعلي بعد الجرد بالكيلوجرام (كجم):'}
                 </label>
                 <input
                   type="number"
                   step="any"
                   value={adjustQuantity}
                   onChange={(e) => setAdjustQuantity(e.target.value)}
-                  placeholder="مثلاً 500"
+                  placeholder={isEn ? 'e.g. 500' : 'مثلاً 500'}
                   required
                   autoFocus
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-sm font-black text-slate-900 focus:outline-emerald-600"
@@ -1268,12 +1422,14 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">السبب / الملاحظات:</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  {isEn ? 'Reason / Explanation:' : 'السبب / الملاحظات:'}
+                </label>
                 <input
                   type="text"
                   value={adjustNotes}
                   onChange={(e) => setAdjustNotes(e.target.value)}
-                  placeholder="مثلاً فاقد سلاج طبيعي، تطاير دريس..."
+                  placeholder={isEn ? 'e.g. natural silage loss...' : 'مثلاً فاقد سلاج طبيعي، تطاير دريس...'}
                   className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-emerald-600"
                 />
               </div>
@@ -1284,13 +1440,13 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                   onClick={() => setIsAdjustModalOpen(false)}
                   className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                 >
-                  إلغاء
+                  {isEn ? 'Cancel' : 'إلغاء'}
                 </button>
                 <button
                   type="submit"
                   className="px-5 py-2 bg-emerald-800 hover:bg-emerald-900 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                 >
-                  حفظ التسوية
+                  {isEn ? 'Save Adjustment' : 'حفظ التسوية'}
                 </button>
               </div>
             </form>
@@ -1301,7 +1457,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       {/* MODAL 3: Material Movement Card / History Timeline (كشف حركة الخامة) */}
       {historyMaterialId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-5 text-right">
+          <div className={`bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 space-y-5 ${isEn ? 'text-left' : 'text-right'}`}>
             {(() => {
               const mat = rawMaterials.find((r) => r.id === historyMaterialId);
               const currentItem = ledgerItems.find((l) => l.rawMaterialId === historyMaterialId);
@@ -1318,10 +1474,12 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       </div>
                       <div>
                         <h3 className="text-base font-black text-slate-900">
-                          كشف حركة خام: {mat?.name} ({mat?.code})
+                          {isEn ? 'Material Movement Ledger:' : 'كشف حركة خام:'} {getMaterialDisplayName(mat?.name, isEn)} ({mat?.code})
                         </h3>
                         <p className="text-xs font-semibold text-slate-500">
-                          الرصيد المتبقي ليوم ({dailyPlan.date}): {currentItem?.closingStockKg.toLocaleString()} كجم
+                          {isEn
+                            ? `Closing balance for (${dailyPlan.date}): ${currentItem?.closingStockKg.toLocaleString()} kg`
+                            : `الرصيد المتبقي ليوم (${dailyPlan.date}): ${currentItem?.closingStockKg.toLocaleString()} كجم`}
                         </p>
                       </div>
                     </div>
@@ -1336,15 +1494,15 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
                   <div className="space-y-3">
                     <div className="overflow-x-auto border border-slate-200 rounded-xl max-h-72">
-                      <table className="w-full text-right text-xs">
+                      <table className={`w-full text-xs ${isEn ? 'text-left' : 'text-right'}`}>
                         <thead className="bg-slate-100 text-slate-700 font-bold sticky top-0 border-b border-slate-200">
                           <tr>
-                            <th className="py-2.5 px-3">التاريخ</th>
-                            <th className="py-2.5 px-2 text-center">الرصيد السابق</th>
-                            <th className="py-2.5 px-2 text-center text-emerald-800">الوارد</th>
-                            <th className="py-2.5 px-2 text-center text-blue-800">المنصرف</th>
-                            <th className="py-2.5 px-2 text-center text-rose-800">الهالك</th>
-                            <th className="py-2.5 px-3 text-center font-black">الرصيد المتبقي</th>
+                            <th className="py-2.5 px-3">{isEn ? 'Date' : 'التاريخ'}</th>
+                            <th className="py-2.5 px-2 text-center">{isEn ? 'Opening Stock' : 'الرصيد السابق'}</th>
+                            <th className="py-2.5 px-2 text-center text-emerald-800">{isEn ? 'Incoming' : 'الوارد'}</th>
+                            <th className="py-2.5 px-2 text-center text-blue-800">{isEn ? 'Dispensed' : 'المنصرف'}</th>
+                            <th className="py-2.5 px-2 text-center text-rose-800">{isEn ? 'Waste' : 'الهالك'}</th>
+                            <th className="py-2.5 px-3 text-center font-black">{isEn ? 'Closing Stock' : 'الرصيد المتبقي'}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1375,7 +1533,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   <span>{dateStr}</span>
                                   {isSelectedDate && (
                                     <span className="text-[10px] bg-emerald-800 text-white px-1.5 py-0.2 rounded">
-                                      اليوم المحدد
+                                      {isEn ? 'Selected Day' : 'اليوم المحدد'}
                                     </span>
                                   )}
                                 </td>
@@ -1390,7 +1548,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                                   {itemOnDate.wasteKg > 0 ? `-${itemOnDate.wasteKg.toLocaleString()}` : '—'}
                                 </td>
                                 <td className="py-2 px-3 text-center font-black text-slate-900">
-                                  {itemOnDate.closingStockKg.toLocaleString()} كجم
+                                  {itemOnDate.closingStockKg.toLocaleString()} {isEn ? 'kg' : 'كجم'}
                                 </td>
                               </tr>
                             );
@@ -1406,7 +1564,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                       onClick={() => setHistoryMaterialId(null)}
                       className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
                     >
-                      إغلاق
+                      {isEn ? 'Close' : 'إغلاق'}
                     </button>
                   </div>
                 </>

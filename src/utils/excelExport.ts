@@ -25,6 +25,17 @@ import {
   calculateConsolidatedBatchIngredients,
   calculateConcentrateBatchFormula,
   ConcentrateBatchFormula,
+  calculateRationDmStats,
+  getRawMaterialDryMatterPercent,
+  getBarnRation,
+  calculateDairyFinancials,
+  calculateFatteningFinancials,
+  calculateFarmDmSummary,
+  calculateBarnDmDemandKg,
+  calculateBarnDmiPerHeadKg,
+  calculateCategoryTotalDemand,
+  calculateBarnTotalAllocatedKgToday,
+  calculateBatchAllocatedKg,
 } from './calculations';
 
 /**
@@ -134,7 +145,9 @@ export function exportRationsToExcel(rations: Ration[], rawMaterials: RawMateria
       'كود العليقة',
       'اسم العليقة',
       'نوع الحساب',
-      'إجمالي وزن الرأس (كجم/رأس)',
+      'إجمالي الوزن As-Fed (كجم)',
+      'المادة الجافة DM (كجم)',
+      'نسبة المادة الجافة (DM %)',
       'تكلفة الكيلو (ج.م)',
       'تكلفة الرأس اليومية (ج.م)',
       'عدد المكونات',
@@ -144,6 +157,7 @@ export function exportRationsToExcel(rations: Ration[], rawMaterials: RawMateria
 
   rations.forEach((r) => {
     const totalKg = calculateRationTotalKgPerHead(r);
+    const dmStats = calculateRationDmStats(r, rawMaterials);
     const costPerKg = calculateRationCostPerKg(r, rawMaterials);
     const costPerHead = totalKg * costPerKg;
 
@@ -152,6 +166,8 @@ export function exportRationsToExcel(rations: Ration[], rawMaterials: RawMateria
       r.name,
       r.calculationType === 'fixed_tonnage' ? 'تركيبة بالطن (1000 كجم)' : 'بالرأس (كجم/رأس)',
       totalKg.toFixed(2),
+      dmStats.totalDmKgPerHead.toFixed(2),
+      `${dmStats.dmPercent}%`,
       costPerKg.toFixed(2),
       costPerHead.toFixed(2),
       r.ingredients?.length || 0,
@@ -166,6 +182,7 @@ export function exportRationsToExcel(rations: Ration[], rawMaterials: RawMateria
   // Detailed Sheet for Each Ration
   rations.forEach((r) => {
     const totalKg = calculateRationTotalKgPerHead(r);
+    const dmStats = calculateRationDmStats(r, rawMaterials);
     const costPerKg = calculateRationCostPerKg(r, rawMaterials);
 
     const detailData: any[][] = [
@@ -173,14 +190,16 @@ export function exportRationsToExcel(rations: Ration[], rawMaterials: RawMateria
       [
         `النوع: ${
           r.calculationType === 'fixed_tonnage' ? 'تركيبة طن' : 'عليقة يومية بالرأس'
-        } | إجمالي وزن الرأس: ${totalKg.toFixed(2)} كجم | تكلفة الكيلو: ${costPerKg.toFixed(2)} ج.م`,
+        } | إجمالي وزن As-Fed: ${totalKg.toFixed(2)} كجم | المادة الجافة: ${dmStats.totalDmKgPerHead.toFixed(2)} كجم DM (${dmStats.dmPercent}% DM) | تكلفة الكيلو: ${costPerKg.toFixed(2)} ج.م`,
       ],
       [],
       [
         'كود الخامة',
         'اسم الخامة',
-        'الكمية (كجم/رأس)',
+        'الكمية الرطبة (كجم)',
         'النسبة المئوية %',
+        'المادة الجافة (% DM)',
+        'وزن المادة الجافة (كجم DM)',
         'طريقة التحميل / الخلط',
         'سعر الكيلو (ج.م)',
         'تكلفة المكون (ج.م)',
@@ -190,6 +209,8 @@ export function exportRationsToExcel(rations: Ration[], rawMaterials: RawMateria
     r.ingredients?.forEach((ing) => {
       const mat = rawMaterials.find((m) => m.id === ing.rawMaterialId);
       const pct = totalKg > 0 ? (ing.amountKgPerHead / totalKg) * 100 : 0;
+      const matDm = getRawMaterialDryMatterPercent(mat);
+      const ingDmKg = ing.amountKgPerHead * (matDm / 100);
       const matPrice = mat?.price || 0;
       const ingCost = ing.amountKgPerHead * matPrice;
 
@@ -198,11 +219,26 @@ export function exportRationsToExcel(rations: Ration[], rawMaterials: RawMateria
         mat?.name || ing.rawMaterialId,
         ing.amountKgPerHead,
         `${pct.toFixed(1)}%`,
+        `${matDm}%`,
+        Number(ingDmKg.toFixed(2)),
         ing.inConcentratePremix ? 'خلاطة المركز والشكاير' : 'تحميل مباشر بمكسر TMR',
         matPrice.toFixed(2),
         ingCost.toFixed(2),
       ]);
     });
+
+    // Add totals row
+    detailData.push([
+      'الإجمالي الكلي',
+      '-',
+      Number(totalKg.toFixed(2)),
+      '100%',
+      `${dmStats.dmPercent}% DM`,
+      Number(dmStats.totalDmKgPerHead.toFixed(2)),
+      '-',
+      '-',
+      Number((totalKg * costPerKg).toFixed(2)),
+    ]);
 
     const wsDetail = XLSX.utils.aoa_to_sheet(detailData);
     configureSheet(wsDetail, detailData);
@@ -373,7 +409,8 @@ export function exportDailyPlanToExcel(
   categories: AnimalCategory[],
   mixers: Mixer[],
   rations: Ration[],
-  barns: Barn[]
+  barns: Barn[],
+  rawMaterials: RawMaterial[] = []
 ) {
   const wb = XLSX.utils.book_new();
 
@@ -385,9 +422,11 @@ export function exportDailyPlanToExcel(
       'رقم اللفة',
       'المكسر',
       'الفئة / العليقة',
+      'نسبة DM %',
       'وقت التشغيل',
       'الوزن المخطط (كجم)',
       'الوزن المحسوب المشتق (كجم)',
+      'الوزن بالمادة الجافة (كجم DM)',
       'عدد العنابر الموزع عليها',
       'تفاصيل التوزيع على العنابر',
       'الحالة',
@@ -396,12 +435,15 @@ export function exportDailyPlanToExcel(
   ];
 
   let totalPlannedWeight = 0;
+  let totalPlannedDmWeight = 0;
 
   dailyPlan.batches.forEach((b, idx) => {
     const mix = mixers.find((m) => m.id === b.mixerId);
     const cat = categories.find((c) => c.id === b.categoryId);
     const rat = rations.find((r) => r.id === (b.rationId || cat?.rationId));
     const derivedWeight = getBatchDerivedTargetWeightKg(b, barns, categories, rations, dailyPlan);
+    const dmStats = calculateRationDmStats(rat, rawMaterials);
+    const batchDm = Math.round(derivedWeight * (dmStats.dmPercent / 100));
 
     const allocDetails = (b.allocations || [])
       .map((al) => {
@@ -411,14 +453,17 @@ export function exportDailyPlanToExcel(
       .join(' | ');
 
     totalPlannedWeight += b.targetWeightKg;
+    totalPlannedDmWeight += batchDm;
 
     batchesData.push([
       b.batchNumber || `لفة #${idx + 1}`,
       mix?.name || '-',
       `${cat?.name || '-'} (${rat?.name || '-'})`,
+      `${dmStats.dmPercent}%`,
       b.time || '-',
       b.targetWeightKg,
       Math.round(derivedWeight),
+      batchDm,
       b.allocations?.length || 0,
       allocDetails || 'لا يوجد توزيع',
       b.status || 'مخططة',
@@ -427,7 +472,7 @@ export function exportDailyPlanToExcel(
   });
 
   batchesData.push([]);
-  batchesData.push(['الإجمالي', '', '', '', totalPlannedWeight, '', '', '', '', '']);
+  batchesData.push(['الإجمالي', '', '', '', '', totalPlannedWeight, '', totalPlannedDmWeight, '', '', '', '']);
 
   const wsBatches = XLSX.utils.aoa_to_sheet(batchesData);
   configureSheet(wsBatches, batchesData);
@@ -435,36 +480,53 @@ export function exportDailyPlanToExcel(
 
   // Sheet 2: Barns Daily State
   const barnsData: any[][] = [
-    [`بيانات واستحقاق العنابر لليوم - تاريخ: ${dailyPlan.date}`],
+    [`بيانات واستحقاق العنابر والمادة الجافة لليوم - تاريخ: ${dailyPlan.date}`],
     [],
     [
       'رقم العنبر',
       'اسم العنبر',
       'الفئة',
+      'العليقة',
+      'نسبة DM %',
       'عدد الرؤوس لليوم',
-      'سحب الرأس (كجم)',
+      'سحب الرأس (كجم As-Fed)',
       'نسبة التغذية %',
       'الاستحقاق الإجمالي (كجم)',
+      'الاستحقاق بالمادة الجافة (كجم DM)',
+      'مأكول الرأس (كجم DMI)',
       'الراجع اليومي (كجم)',
       'المأكول الفعلي (كجم)',
     ],
   ];
 
-  barns.forEach((b) => {
+  [...barns]
+    .sort((a, b) => (a.orderIndex !== undefined ? a.orderIndex : 9999) - (b.orderIndex !== undefined ? b.orderIndex : 9999))
+    .forEach((b) => {
     const dailyState = getBarnDailyState(b, dailyPlan);
     const cat = categories.find((c) => c.id === b.categoryId);
+    const rat = getBarnRation(b, categories, rations, dailyPlan);
+    const dmStats = calculateRationDmStats(rat, rawMaterials);
     const demand = calculateBarnDailyDemand(b, categories, rations, dailyPlan);
     const refusal = calculateBarnRefusalKg(b, categories, rations, dailyPlan);
     const actualIntake = calculateBarnActualIntakeKg(b, categories, rations, dailyPlan);
+    const barnDmKg = Math.round(demand * (dmStats.dmPercent / 100));
+    const dmiKg =
+      dailyState.headCount > 0
+        ? Math.round((actualIntake * (dmStats.dmPercent / 100) / dailyState.headCount) * 100) / 100
+        : 0;
 
     barnsData.push([
       dailyState.displayNumber || b.number,
       dailyState.displayName || b.name || '-',
       cat?.name || '-',
+      rat?.name || '-',
+      `${dmStats.dmPercent}%`,
       dailyState.headCount,
       dailyState.baseFeedKgPerHead || b.baseFeedKgPerHead,
       `${dailyState.feedingRatioPercent}%`,
       Math.round(demand),
+      barnDmKg,
+      dmiKg,
       Math.round(refusal),
       Math.round(actualIntake),
     ]);
@@ -492,7 +554,7 @@ export function exportPreparationOrdersToExcel(
 
   // Matrix Sheet
   const matrixData: any[][] = [
-    [`أوامر تحضير وتحميل خامات المكسر لجميع اللفات - تاريخ: ${dailyPlan.date}`],
+    [`أوامر تحضير وتحميل خامات المكسر لجميع اللفات والمادة الجافة - تاريخ: ${dailyPlan.date}`],
     [],
     [
       'رقم اللفة',
@@ -500,7 +562,9 @@ export function exportPreparationOrdersToExcel(
       'الفئة / العليقة',
       'الوزن الإجمالي للدفعة (كجم)',
       'اسم الخامة',
-      'الوزن المطلوب (كجم)',
+      'المادة الجافة % (DM)',
+      'الكمية بالمادة الجافة (كجم DM)',
+      'الوزن المطلوب (كجم As-Fed)',
       'الوزن الفعلي (كجم)',
       'طريقة التحميل والخلط',
     ],
@@ -521,6 +585,8 @@ export function exportPreparationOrdersToExcel(
     ingCalc.forEach((item) => {
       const mat = rawMaterials.find((m) => m.id === item.rawMaterialId);
       const actualLoaded = b.actualIngredientWeights?.[item.rawMaterialId];
+      const matDm = getRawMaterialDryMatterPercent(mat);
+      const dmKg = Math.round(item.requiredKg * (matDm / 100) * 10) / 10;
 
       matrixData.push([
         b.batchNumber || `لفة #${idx + 1}`,
@@ -528,6 +594,8 @@ export function exportPreparationOrdersToExcel(
         `${cat?.name || '-'} (${rat?.name || '-'})`,
         b.targetWeightKg,
         mat?.name || item.name || item.rawMaterialId,
+        `${matDm}%`,
+        dmKg,
         Math.round(item.requiredKg),
         actualLoaded !== undefined ? actualLoaded : '',
         mat?.materialType === 'concentrate' ? 'شيكارة مركز مسبق' : 'تحميل مباشر بالمكسر',
@@ -577,7 +645,15 @@ export function exportDriverSheetToExcel(
     const cat = categories.find((c) => c.id === b.categoryId);
 
     if (b.allocations && b.allocations.length > 0) {
-      b.allocations.forEach((al) => {
+      [...b.allocations]
+        .sort((a1, b1) => {
+          const barnA = barns.find((bn) => bn.id === a1.barnId);
+          const barnB = barns.find((bn) => bn.id === b1.barnId);
+          const orderA = barnA?.orderIndex !== undefined ? barnA.orderIndex : 9999;
+          const orderB = barnB?.orderIndex !== undefined ? barnB.orderIndex : 9999;
+          return orderA - orderB;
+        })
+        .forEach((al) => {
         const barnObj = barns.find((bn) => bn.id === al.barnId);
         const dailyState = barnObj ? getBarnDailyState(barnObj, dailyPlan) : null;
         totalAllocatedKg += al.allocatedKg;
@@ -830,81 +906,252 @@ export function exportNutritionReportToExcel(
 ) {
   const wb = XLSX.utils.book_new();
 
-  // Summary Sheet
-  const totalHeads = barns.reduce((s, b) => {
+  const activeBarns = barns.filter((b) => b.status === 'نشط');
+
+  // Summary Metrics
+  const totalHeads = activeBarns.reduce((s, b) => {
     const ds = getBarnDailyState(b, dailyPlan);
     return s + ds.headCount;
   }, 0);
 
-  const totalDemandKg = barns.reduce((s, b) => {
+  const totalDemandKg = activeBarns.reduce((s, b) => {
     return s + calculateBarnDailyDemand(b, categories, rations, dailyPlan);
   }, 0);
 
-  const totalRefusalKg = barns.reduce((s, b) => {
+  const totalRefusalKg = activeBarns.reduce((s, b) => {
     return s + calculateBarnRefusalKg(b, categories, rations, dailyPlan);
   }, 0);
 
-  const totalIntakeKg = totalDemandKg - totalRefusalKg;
+  const totalIntakeKg = Math.max(0, totalDemandKg - totalRefusalKg);
 
+  const totalAllocatedKg = activeBarns.reduce((s, b) => {
+    return s + calculateBarnTotalAllocatedKgToday(b.id, dailyPlan);
+  }, 0);
+
+  // Total Feed Cost Today
+  const totalFeedCostToday = activeBarns.reduce((sum, b) => {
+    const ration = getBarnRation(b, categories, rations, dailyPlan);
+    const costPerKg = ration ? calculateRationCostPerKg(ration, rawMaterials) : 0;
+    const demand = calculateBarnDailyDemand(b, categories, rations, dailyPlan);
+    return sum + demand * costPerKg;
+  }, 0);
+
+  const avgFeedCostPerHead = totalHeads > 0 ? totalFeedCostToday / totalHeads : 0;
+  const avgFeedCostPerKgAsFed = totalDemandKg > 0 ? totalFeedCostToday / totalDemandKg : 0;
+
+  // Dry Matter Summary
+  const farmDmSummary = calculateFarmDmSummary(
+    activeBarns,
+    categories,
+    rations,
+    dailyPlan,
+    rawMaterials
+  );
+
+  // Dairy Financials
+  const milkData = dailyPlan.milkProduction;
+  const effectiveMilkPrice =
+    milkData?.milkPricePerKg && milkData.milkPricePerKg > 0
+      ? milkData.milkPricePerKg
+      : settings?.defaultMilkPricePerKg || 20;
+
+  const dairyFinancials = calculateDairyFinancials(
+    milkData,
+    barns,
+    categories,
+    rations,
+    rawMaterials,
+    dailyPlan,
+    effectiveMilkPrice
+  );
+
+  // Fattening Financials
+  const effectiveAdg =
+    dailyPlan.fatteningAdgKg && dailyPlan.fatteningAdgKg > 0
+      ? dailyPlan.fatteningAdgKg
+      : 1.5;
+
+  const fatteningFinancials = calculateFatteningFinancials(
+    barns,
+    categories,
+    rations,
+    rawMaterials,
+    dailyPlan,
+    effectiveAdg
+  );
+
+  const currency = settings?.currency || 'ج.م';
+
+  // ==========================================
+  // Sheet 1: General & Financial KPIs
+  // ==========================================
   const summaryData: any[][] = [
     [`التقرير الفني والمالي الشامل لتغذية المزرعة - تاريخ: ${dailyPlan.date}`],
     [`اسم المزرعة: ${settings?.farmName || 'المزرعة النموذجية'}`],
+    [`المسؤول الفني: ${settings?.engineerName || '-'}`],
     [],
-    ['المؤشر الفني', 'القيمة'],
-    ['إجمالي رؤوس المزرعة لليوم', `${totalHeads.toLocaleString('ar-EG')} رأس`],
+    ['المؤشر الفني العام', 'القيمة'],
+    ['إجمالي رؤوس القطيع النشط لليوم', `${totalHeads.toLocaleString('ar-EG')} رأس`],
+    ['عدد العنابر النشطة', `${activeBarns.length} عنبر`],
     ['إجمالي العلف المطلوب (Gross Demand)', `${Math.round(totalDemandKg).toLocaleString('ar-EG')} كجم`],
-    ['إجمالي الراجع اليومي (Refusals)', `${Math.round(totalRefusalKg).toLocaleString('ar-EG')} كجم`],
+    ['إجمالي الراجع اليومي (Refusals)', `${Math.round(totalRefusalKg).toLocaleString('ar-EG')} كجم (${totalDemandKg > 0 ? ((totalRefusalKg / totalDemandKg) * 100).toFixed(1) : 0}%)`],
     ['صافي العلف المأكول الفعلي (Net Intake)', `${Math.round(totalIntakeKg).toLocaleString('ar-EG')} كجم`],
-    ['عدد لفات المكسر المجهزة', `${dailyPlan.batches?.length || 0} لفة`],
+    ['إجمالي الموزع بالمكسرات', `${Math.round(totalAllocatedKg).toLocaleString('ar-EG')} كجم (${totalDemandKg > 0 ? Math.round((totalAllocatedKg / totalDemandKg) * 100) : 0}% استيفاء)`],
+    ['عدد لفات المكسر اليومية', `${dailyPlan.batches?.length || 0} لفة`],
+    [],
+    ['مؤشرات المادة الجافة (Dry Matter)', ''],
+    ['إجمالي مقرر المادة الجافة (DM Demand)', `${Math.round(farmDmSummary.totalDmDemandKg).toLocaleString('ar-EG')} كجم DM`],
+    ['إجمالي المأكول الفعلي مادة جافة (DMI)', `${Math.round(farmDmSummary.totalActualDmiKg).toLocaleString('ar-EG')} كجم DM`],
+    ['متوسط المادة الجافة بالعلائق %', `${farmDmSummary.averageDmPercent}% DM`],
+    ['متوسط استهلاك الرأس من المادة الجافة', `${farmDmSummary.averageDmiPerHeadKg} كجم DM/رأس`],
+    [],
+    ['مؤشرات التكلفة المالية للعلف', ''],
+    ['إجمالي تكلفة العلف لليوم (Gross Cost)', `${Math.round(totalFeedCostToday).toLocaleString('ar-EG')} ${currency}`],
+    ['متوسط تكلفة علف الرأس لليوم', `${avgFeedCostPerHead.toFixed(2)} ${currency}/رأس`],
+    ['متوسط تكلفة كيلو العلف الطازج', `${avgFeedCostPerKgAsFed.toFixed(2)} ${currency}/كجم`],
+    [],
+    ['مؤشرات قطيع الحلاب والجدوى (IOFC)', ''],
+    ['عدد الأبقار الحلابة', `${dairyFinancials.milkingHeadCount} بقرة`],
+    ['إجمالي إنتاج اللبن اليومي', `${dairyFinancials.totalMilkKg.toLocaleString('ar-EG')} كجم`],
+    ['سعر بيع كيلو الحليب', `${dairyFinancials.milkPricePerKg.toFixed(2)} ${currency}`],
+    ['إجمالي إيراد اللبن اليومي', `${dairyFinancials.totalMilkRevenue.toLocaleString('ar-EG')} ${currency}`],
+    ['إجمالي تكلفة علف الحلاب اليومي', `${dairyFinancials.totalMilkingFeedCost.toLocaleString('ar-EG')} ${currency}`],
+    ['تكلفة علف كيلو اللبن', `${dairyFinancials.costPerKgMilkFeedCost.toFixed(2)} ${currency}/كجم لبن`],
+    ['عائد اللبن فوق العلف (IOFC) للرأس', `${dairyFinancials.iofcPerCowPerDay.toFixed(2)} ${currency}/بقرة/يوم`],
+    ['صافي العائد اليومي لقطيع الحلاب (IOFC)', `${dairyFinancials.totalIofcPerDay.toLocaleString('ar-EG')} ${currency}`],
+    [],
+    ['مؤشرات قطيع التسمين والتحويل اللحمي', ''],
+    ['عدد رؤوس التسمين', `${fatteningFinancials.totalFatteningHeads} رأس`],
+    ['إجمالي علف التسمين اليومي', `${Math.round(fatteningFinancials.totalDailyDemandKg).toLocaleString('ar-EG')} كجم`],
+    ['إجمالي تكلفة علف التسمين', `${Math.round(fatteningFinancials.totalDailyFeedCost).toLocaleString('ar-EG')} ${currency}`],
+    ['تكلفة علف عجل التسمين اليومي', `${fatteningFinancials.feedCostPerHeadPerDay.toFixed(2)} ${currency}/عجل/يوم`],
+    ['معدل النمو اليومي المفترض (ADG)', `${fatteningFinancials.assumedAdgKg} كجم/يوم`],
+    ['تكلفة كجم النمو واللحم من العلف', `${fatteningFinancials.feedCostPerKgGain.toFixed(2)} ${currency}/كجم زيادة`],
   ];
-
-  if (dailyPlan.milkProduction) {
-    const milkMetrics = calculateMilkMetrics(
-      dailyPlan.milkProduction,
-      barns,
-      categories,
-      rations,
-      dailyPlan,
-      rawMaterials
-    );
-    summaryData.push([]);
-    summaryData.push(['مؤشرات إنتاج اللبن والأداء الفني', '']);
-    summaryData.push(['إجمالي إنتاج اللبن اليومي', `${milkMetrics.totalMilkKg.toLocaleString('ar-EG')} كجم / لتر`]);
-    summaryData.push(['متوسط إنتاج البقرة اليومي', `${milkMetrics.averageMilkPerHead.toFixed(2)} كجم/رأس`]);
-    summaryData.push(['كفاءة التحويل الغذائي (DMI)', `${milkMetrics.feedConversionRatio.toFixed(2)} كجم مادة جافة / كجم لبن`]);
-    summaryData.push(['الكفاءة العلفية (Feed Efficiency)', `${milkMetrics.feedEfficiency.toFixed(2)} كجم لبن / كجم DMI`]);
-  }
 
   const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
   configureSheet(wsSummary, summaryData);
-  XLSX.utils.book_append_sheet(wb, wsSummary, 'المؤشرات العامة');
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'المؤشرات العامة والمالية');
 
-  // Barns Performance Breakdown Sheet
+  // ==========================================
+  // Sheet 2: Category Breakdown Table
+  // ==========================================
+  const categoryRows: any[][] = [
+    [`بيان الفئات الحيوانية والعلائق وتكاليف التغذية - تاريخ: ${dailyPlan.date}`],
+    [],
+    [
+      'الفئة الحيوانية',
+      'اسم العليقة',
+      `سعر العليقة (${currency}/كجم)`,
+      'عدد الرؤوس',
+      'الاحتياج اليومي (كجم)',
+      'المادة الجافة % (DM)',
+      'مقرر DM (كجم)',
+      `إجمالي التكلفة اليومية (${currency})`,
+      `متوسط تكلفة الرأس (${currency})`,
+      'الموزع بالمكسرات (كجم)',
+    ],
+  ];
+
+  categories.forEach((cat) => {
+    const catBarns = activeBarns.filter((b) => b.categoryId === cat.id);
+    const catHeads = catBarns.reduce((sum, b) => {
+      const s = getBarnDailyState(b, dailyPlan);
+      return sum + s.headCount;
+    }, 0);
+    const catDemand = calculateCategoryTotalDemand(barns, cat.id, categories, rations, dailyPlan);
+    const defaultRation = rations.find((r) => r.id === cat.rationId);
+    const defaultRationCost = defaultRation ? calculateRationCostPerKg(defaultRation, rawMaterials) : 0;
+
+    let catTotalCost = 0;
+    let catDmKg = 0;
+    catBarns.forEach((b) => {
+      const bRation = getBarnRation(b, categories, rations, dailyPlan);
+      const bCost = bRation ? calculateRationCostPerKg(bRation, rawMaterials) : 0;
+      const bDemand = calculateBarnDailyDemand(b, categories, rations, dailyPlan);
+      const bDm = calculateBarnDmDemandKg(b, categories, rations, dailyPlan, rawMaterials);
+      catTotalCost += bDemand * bCost;
+      catDmKg += bDm;
+    });
+    catDmKg = Math.round(catDmKg * 10) / 10;
+    const effectiveCostPerKg = catDemand > 0 ? catTotalCost / catDemand : defaultRationCost;
+    const dmStats = defaultRation ? calculateRationDmStats(defaultRation, rawMaterials) : { dmPercent: 0 };
+    const dmPercent = catDemand > 0 ? Math.round((catDmKg / catDemand) * 1000) / 10 : dmStats.dmPercent;
+    const catBatches = (dailyPlan.batches || []).filter((b) => b.categoryId === cat.id);
+    const catAllocated = catBatches.reduce((sum, b) => sum + calculateBatchAllocatedKg(b), 0);
+    const costPerHead = catHeads > 0 ? catTotalCost / catHeads : 0;
+
+    categoryRows.push([
+      cat.name,
+      defaultRation?.name || '—',
+      Number(effectiveCostPerKg.toFixed(2)),
+      catHeads,
+      Math.round(catDemand),
+      `${dmPercent}%`,
+      Math.round(catDmKg),
+      Math.round(catTotalCost),
+      Number(costPerHead.toFixed(1)),
+      Math.round(catAllocated),
+    ]);
+  });
+
+  // Category Total Row
+  categoryRows.push([
+    'الإجمالي الكلي لجميع الفئات',
+    '—',
+    Number(avgFeedCostPerKgAsFed.toFixed(2)),
+    totalHeads,
+    Math.round(totalDemandKg),
+    `${farmDmSummary.averageDmPercent}%`,
+    Math.round(farmDmSummary.totalDmDemandKg),
+    Math.round(totalFeedCostToday),
+    Number(avgFeedCostPerHead.toFixed(1)),
+    Math.round(totalAllocatedKg),
+  ]);
+
+  const wsCategories = XLSX.utils.aoa_to_sheet(categoryRows);
+  configureSheet(wsCategories, categoryRows);
+  XLSX.utils.book_append_sheet(wb, wsCategories, 'بيان الفئات والعلائق');
+
+  // ==========================================
+  // Sheet 3: Barns Performance Breakdown Sheet
+  // ==========================================
   const barnsBreakdown: any[][] = [
-    [`تفاصيل استهلاك وأداء العنابر - تاريخ: ${dailyPlan.date}`],
+    [`تفاصيل استهلاك وأداء وتكاليف العنابر - تاريخ: ${dailyPlan.date}`],
     [],
     [
       'رقم العنبر',
       'اسم العنبر',
       'الفئة',
       'العليقة',
+      `سعر الكيلو (${currency})`,
       'عدد الرؤوس',
-      'المأكول لكل رأس (كجم)',
-      'العلف المقدم الإجمالي (كجم)',
+      'نسبة التغذية %',
+      'المقرر (كجم)',
+      'مقرر DM (كجم)',
       'الراجع (كجم)',
       'المأكول الفعلي (كجم)',
+      'DMI للرأس (كجم)',
+      `تكلفة العلف (${currency})`,
+      `تكلفة الرأس (${currency})`,
+      'الموزع بالمكسر (كجم)',
       'نسبة الراجع %',
     ],
   ];
 
-  barns.forEach((b) => {
+  activeBarns.forEach((b) => {
     const ds = getBarnDailyState(b, dailyPlan);
     const cat = categories.find((c) => c.id === b.categoryId);
-    const rat = rations.find((r) => r.id === (ds.rationId || cat?.rationId));
+    const rat = getBarnRation(b, categories, rations, dailyPlan);
+    const costPerKg = rat ? calculateRationCostPerKg(rat, rawMaterials) : 0;
     const demand = calculateBarnDailyDemand(b, categories, rations, dailyPlan);
+    const barnDm = calculateBarnDmDemandKg(b, categories, rations, dailyPlan, rawMaterials);
+    const barnDmi = calculateBarnDmiPerHeadKg(b, categories, rations, dailyPlan, rawMaterials);
     const refusal = calculateBarnRefusalKg(b, categories, rations, dailyPlan);
     const intake = calculateBarnActualIntakeKg(b, categories, rations, dailyPlan);
-    const intakePerHead = ds.headCount > 0 ? intake / ds.headCount : 0;
+    const allocated = calculateBarnTotalAllocatedKgToday(b.id, dailyPlan);
+    const barnTotalCost = Math.round(demand * costPerKg);
+    const costPerHead = ds.headCount > 0 ? barnTotalCost / ds.headCount : 0;
     const refusalPct = demand > 0 ? (refusal / demand) * 100 : 0;
 
     barnsBreakdown.push([
@@ -912,18 +1159,44 @@ export function exportNutritionReportToExcel(
       ds.displayName || b.name || '-',
       cat?.name || '-',
       rat?.name || '-',
+      Number(costPerKg.toFixed(2)),
       ds.headCount,
-      intakePerHead.toFixed(2),
+      `${ds.feedingRatioPercent}%`,
       Math.round(demand),
+      Math.round(barnDm),
       Math.round(refusal),
       Math.round(intake),
+      Number(barnDmi.toFixed(2)),
+      barnTotalCost,
+      Number(costPerHead.toFixed(1)),
+      Math.round(allocated),
       `${refusalPct.toFixed(1)}%`,
     ]);
   });
 
+  // Barns Total Row
+  barnsBreakdown.push([
+    'الإجمالي لكافة العنابر النشطة',
+    '—',
+    '—',
+    '—',
+    Number(avgFeedCostPerKgAsFed.toFixed(2)),
+    totalHeads,
+    '—',
+    Math.round(totalDemandKg),
+    Math.round(farmDmSummary.totalDmDemandKg),
+    Math.round(totalRefusalKg),
+    Math.round(totalIntakeKg),
+    Number(farmDmSummary.averageDmiPerHeadKg.toFixed(2)),
+    Math.round(totalFeedCostToday),
+    Number(avgFeedCostPerHead.toFixed(1)),
+    Math.round(totalAllocatedKg),
+    `${totalDemandKg > 0 ? ((totalRefusalKg / totalDemandKg) * 100).toFixed(1) : 0}%`,
+  ]);
+
   const wsBarns = XLSX.utils.aoa_to_sheet(barnsBreakdown);
   configureSheet(wsBarns, barnsBreakdown);
-  XLSX.utils.book_append_sheet(wb, wsBarns, 'تحليل استهلاك العنابر');
+  XLSX.utils.book_append_sheet(wb, wsBarns, 'تحليل استهلاك وتكاليف العنابر');
 
   downloadWorkbook(wb, `التقرير_الشامل_للتغذية_${dailyPlan.date}`);
 }
@@ -1418,3 +1691,129 @@ export function exportConcentrateFormulaToExcel(
 
   downloadWorkbook(wb, `معادلة_خلاطة_مركز_${categoryName.replace(/\s+/g, '_')}_${formula.targetBatchKg}كجم`);
 }
+
+// ==========================================
+// 13. Whole-Farm Economics & IOFC Export
+// ==========================================
+export function exportFarmEconomicsToExcel(
+  summary: {
+    totalFarmHeads: number;
+    activeBarnsCount: number;
+    totalFarmDemandKg: number;
+    totalFarmDemandTons: number;
+    totalFarmDailyFeedCost: number;
+    averageFeedCostPerHead: number;
+    totalMilkRevenue: number;
+    totalMeatGainRevenue: number;
+    totalFarmDailyRevenue: number;
+    averageRevenuePerHead: number;
+    wholeFarmNetMarginOverFeed: number;
+    wholeFarmNetMarginPerHead: number;
+    wholeFarmFeedCostPercentOfRevenue: number;
+    dairyOnlyFeedCost: number;
+    dairyOnlyRevenue: number;
+    dairyOnlyIofc: number;
+    dairyTotalHeads: number;
+    dairyAverageIofcPerHead: number;
+    fatteningOnlyFeedCost: number;
+    fatteningOnlyRevenue: number;
+    fatteningOnlyMofc: number;
+    fatteningTotalHeads: number;
+    fatteningAverageMofcPerHead: number;
+    nonProducingFeedCost: number;
+    nonProducingHeads: number;
+    milkPricePerKg: number;
+    liveMeatPricePerKg: number;
+    fatteningAdgKg: number;
+    categoriesBreakdown: any[];
+  },
+  farmName: string = 'مزرعة الماشية',
+  dateStr: string = new Date().toISOString().split('T')[0],
+  currency: string = 'ج.م'
+) {
+  const wb = XLSX.utils.book_new();
+
+  const sheetData: any[][] = [
+    [`تقرير التحليل المالي واقتصاديات المزرعة و IOFC - ${farmName}`],
+    [`تاريخ التشغيل: ${dateStr}`, `تاريخ التصدير: ${new Date().toLocaleDateString('ar-EG')}`],
+    [],
+    ['=== ملخص الميزان المالي الشامل للمزرعة (Whole-Farm Net Margin) ==='],
+    ['إجمالي رؤوس المزرعة', summary.totalFarmHeads, 'رأس'],
+    ['إجمالي العنابر النشطة', summary.activeBarnsCount, 'عنبر'],
+    ['إجمالي استهلاك العلف اليومي', summary.totalFarmDemandKg, 'كجم', `(${summary.totalFarmDemandTons} طن)`],
+    ['إجمالي تكلفة العلف اليومية (كل الفئات)', summary.totalFarmDailyFeedCost, currency],
+    ['متوسط تكلفة تغذية الرأس الواحدة', summary.averageFeedCostPerHead, `${currency} / رأس / يوم`],
+    ['إجمالي إيراد الحليب المقدر', summary.totalMilkRevenue, currency, `(بسعر ${summary.milkPricePerKg} ${currency}/كجم)`],
+    ['إجمالي إيراد التحويل اللحمي للتسمين', summary.totalMeatGainRevenue, currency, `(بسعر ${summary.liveMeatPricePerKg} ${currency}/كجم و ADG ${summary.fatteningAdgKg} كجم)`],
+    ['إجمالي الإيرادات اليومية للمزرعة', summary.totalFarmDailyRevenue, currency],
+    ['صافي عائد المزرعة بعد تغذية الكل (Net Margin Over Feed)', summary.wholeFarmNetMarginOverFeed, `${currency} / يوم`],
+    ['صافي الربح اليومي لكل رأس بالمزرعة', summary.wholeFarmNetMarginPerHead, `${currency} / رأس / يوم`],
+    ['نسبة تكلفة العلف الشامل من الإيراد', `${summary.wholeFarmFeedCostPercentOfRevenue}%`],
+    [],
+    ['=== مقارنة قطاعات الإنتاج والرعاية ==='],
+    ['القطاع', 'عدد الرؤوس', `تكلفة العلف اليومية (${currency})`, `الإيراد اليومي (${currency})`, `صافي العائد (${currency})`, `العائد / الرأس (${currency})`],
+    ['قطاع أبقار الحلاب (Dairy IOFC)', summary.dairyTotalHeads, summary.dairyOnlyFeedCost, summary.dairyOnlyRevenue, summary.dairyOnlyIofc, summary.dairyAverageIofcPerHead],
+    ['قطاع عجول التسمين (Beef MOFC)', summary.fatteningTotalHeads, summary.fatteningOnlyFeedCost, summary.fatteningOnlyRevenue, summary.fatteningOnlyMofc, summary.fatteningAverageMofcPerHead],
+    ['قطيع الرعاية والاستثمار (جاف، عشار، نامي، رضع)', summary.nonProducingHeads, summary.nonProducingFeedCost, 0, -summary.nonProducingFeedCost, summary.nonProducingHeads > 0 ? -Math.round(summary.nonProducingFeedCost / summary.nonProducingHeads) : 0],
+    [],
+    ['=== تفصيل تكلفة وعائد كل فئة حيوانية على حدة ==='],
+    [
+      'م',
+      'الفئة الحيوانية',
+      'النوع الإنتاجي',
+      'العنابر',
+      'عدد الرؤوس',
+      'العلف اليومي (كجم)',
+      'العليقة',
+      `سعر كجم العليقة (${currency})`,
+      `إجمالي تكلفة العلف (${currency})`,
+      `تكلفة الرأس/يوم (${currency})`,
+      'الحصة من علف المزرعة %',
+      'طبيعة العائد',
+      `الإيراد اليومي (${currency})`,
+      `إيراد الرأس/يوم (${currency})`,
+      'صافي العائد (IOFC/MOFC)',
+      `صافي الرأس/يوم (${currency})`,
+      'نسبة العلف من الدخل %',
+    ],
+  ];
+
+  summary.categoriesBreakdown.forEach((cat, idx) => {
+    sheetData.push([
+      idx + 1,
+      cat.categoryName,
+      cat.categoryType === 'milking'
+        ? 'إنتاج حليب (حلاب)'
+        : cat.categoryType === 'fattening'
+        ? 'تسمين لحم'
+        : cat.categoryType === 'dry'
+        ? 'أبقار جافة'
+        : cat.categoryType === 'heifer'
+        ? 'عجلات نامية/عشار'
+        : cat.categoryType === 'calf'
+        ? 'رضيع وفطام'
+        : 'أخرى',
+      cat.barnNames?.join('، ') || cat.barnCount,
+      cat.totalHeads,
+      cat.dailyDemandKg,
+      cat.rationName,
+      cat.rationCostPerKg,
+      cat.totalDailyFeedCost,
+      cat.feedCostPerHeadPerDay,
+      `${cat.feedCostSharePercent}%`,
+      cat.revenueTypeLabel,
+      cat.dailyRevenue,
+      cat.revenuePerHeadPerDay,
+      cat.netMarginOverFeed,
+      cat.netMarginPerHeadPerDay,
+      cat.isRevenueGenerating ? `${cat.feedCostPercentOfRevenue}%` : '-',
+    ]);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(sheetData);
+  configureSheet(ws, sheetData);
+  XLSX.utils.book_append_sheet(wb, ws, 'اقتصاديات_المزرعة_IOFC');
+
+  downloadWorkbook(wb, `اقتصاديات_المزرعة_IOFC_${dateStr}`);
+}
+

@@ -11,6 +11,7 @@ import {
   ConcentrateIngredientItem,
   ConcentratePremixOrder,
   ConcentrateBagStock,
+  FarmSettings,
 } from '../types';
 
 /**
@@ -389,18 +390,19 @@ export interface CalculatedBatchIngredient {
 export function calculateBatchIngredients(
   batchTargetWeightKg: number,
   ration: Ration | undefined,
-  rawMaterials: RawMaterial[],
+  rawMaterials: RawMaterial[] = [],
   actualWeights?: Record<string, number>
 ): CalculatedBatchIngredient[] {
   if (!ration || !ration.ingredients || ration.ingredients.length === 0 || batchTargetWeightKg <= 0) {
     return [];
   }
 
+  const safeMaterials = Array.isArray(rawMaterials) ? rawMaterials : [];
   const totalRationKgPerHead = calculateRationTotalKgPerHead(ration);
   if (totalRationKgPerHead <= 0) return [];
 
   return ration.ingredients.map((ing) => {
-    const rawMat = rawMaterials.find((rm) => rm.id === ing.rawMaterialId);
+    const rawMat = safeMaterials.find((rm) => rm.id === ing.rawMaterialId);
     const proportion = ing.amountKgPerHead / totalRationKgPerHead;
     const requiredKg = Math.round(proportion * batchTargetWeightKg * 100) / 100;
     const actualKg = actualWeights?.[ing.rawMaterialId] !== undefined
@@ -1020,11 +1022,12 @@ export function calculateRationDmStats(
   if (!ration || !ration.ingredients || ration.ingredients.length === 0) {
     return { totalAsFedKgPerHead: 0, totalDmKgPerHead: 0, dmPercent: 50 };
   }
+  const safeMaterials = Array.isArray(rawMaterials) ? rawMaterials : [];
   let totalAsFed = 0;
   let totalDm = 0;
 
   ration.ingredients.forEach((ing) => {
-    const rawMat = rawMaterials.find((rm) => rm.id === ing.rawMaterialId);
+    const rawMat = safeMaterials.find((rm) => rm.id === ing.rawMaterialId);
     const amount = Number(ing.amountKgPerHead) || 0;
     const dmPercent = getRawMaterialDryMatterPercent(rawMat);
     totalAsFed += amount;
@@ -1036,6 +1039,107 @@ export function calculateRationDmStats(
     totalAsFedKgPerHead: Math.round(totalAsFed * 100) / 100,
     totalDmKgPerHead: Math.round(totalDm * 1000) / 1000,
     dmPercent: Math.round(dmPercent * 10) / 10,
+  };
+}
+
+/**
+ * Calculates a specific barn's daily Dry Matter demand in kg (الاحتياج اليومي بالمادة الجافة كجم DM).
+ */
+export function calculateBarnDmDemandKg(
+  barn: Barn,
+  categories: AnimalCategory[],
+  rations: Ration[],
+  dailyPlan?: DailyOperationPlan,
+  rawMaterials: RawMaterial[] = []
+): number {
+  const netDemandAsFed = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+  const ration = getBarnRation(barn, categories, rations, dailyPlan);
+  const dmStats = calculateRationDmStats(ration, rawMaterials);
+  const dmMultiplier = dmStats.dmPercent > 0 ? dmStats.dmPercent / 100 : 0.5;
+  return Math.round(netDemandAsFed * dmMultiplier * 10) / 10;
+}
+
+/**
+ * Calculates a specific barn's actual daily Dry Matter Intake (DMI كجم مادة جافة مأكولة فعلياً).
+ */
+export function calculateBarnActualDmiKg(
+  barn: Barn,
+  categories: AnimalCategory[],
+  rations: Ration[],
+  dailyPlan?: DailyOperationPlan,
+  rawMaterials: RawMaterial[] = []
+): number {
+  const actualIntakeAsFed = calculateBarnActualIntakeKg(barn, categories, rations, dailyPlan);
+  const ration = getBarnRation(barn, categories, rations, dailyPlan);
+  const dmStats = calculateRationDmStats(ration, rawMaterials);
+  const dmMultiplier = dmStats.dmPercent > 0 ? dmStats.dmPercent / 100 : 0.5;
+  return Math.round(actualIntakeAsFed * dmMultiplier * 10) / 10;
+}
+
+/**
+ * Calculates a specific barn's DMI per head (كجم مادة جافة متناولة للرأس الواحد باليوم).
+ */
+export function calculateBarnDmiPerHeadKg(
+  barn: Barn,
+  categories: AnimalCategory[],
+  rations: Ration[],
+  dailyPlan?: DailyOperationPlan,
+  rawMaterials: RawMaterial[] = []
+): number {
+  const barnState = getBarnDailyState(barn, dailyPlan);
+  const headCount = barnState.headCount || barn.headCount || 0;
+  if (headCount <= 0) return 0;
+  const actualDmi = calculateBarnActualDmiKg(barn, categories, rations, dailyPlan, rawMaterials);
+  return Math.round((actualDmi / headCount) * 100) / 100;
+}
+
+/**
+ * Calculates overall farm or filtered barns Dry Matter summary metrics.
+ */
+export function calculateFarmDmSummary(
+  targetBarns: Barn[],
+  categories: AnimalCategory[],
+  rations: Ration[],
+  dailyPlan?: DailyOperationPlan,
+  rawMaterials: RawMaterial[] = []
+): {
+  totalDmDemandKg: number;
+  totalActualDmiKg: number;
+  averageDmPercent: number;
+  averageDmiPerHeadKg: number;
+} {
+  let totalAsFedDemand = 0;
+  let totalDmDemand = 0;
+  let totalActualDmi = 0;
+  let totalHeads = 0;
+
+  targetBarns.forEach((barn) => {
+    const barnState = getBarnDailyState(barn, dailyPlan);
+    const headCount = barnState.headCount || barn.headCount || 0;
+    totalHeads += headCount;
+
+    const asFedDemand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+    const ration = getBarnRation(barn, categories, rations, dailyPlan);
+    const dmStats = calculateRationDmStats(ration, rawMaterials);
+    const dmRatio = dmStats.dmPercent > 0 ? dmStats.dmPercent / 100 : 0.5;
+
+    totalAsFedDemand += asFedDemand;
+    totalDmDemand += asFedDemand * dmRatio;
+
+    const actualIntake = calculateBarnActualIntakeKg(barn, categories, rations, dailyPlan);
+    totalActualDmi += actualIntake * dmRatio;
+  });
+
+  const averageDmPercent =
+    totalAsFedDemand > 0 ? Math.round((totalDmDemand / totalAsFedDemand) * 1000) / 10 : 0;
+  const averageDmiPerHeadKg =
+    totalHeads > 0 ? Math.round((totalActualDmi / totalHeads) * 100) / 100 : 0;
+
+  return {
+    totalDmDemandKg: Math.round(totalDmDemand * 10) / 10,
+    totalActualDmiKg: Math.round(totalActualDmi * 10) / 10,
+    averageDmPercent,
+    averageDmiPerHeadKg,
   };
 }
 
@@ -1231,11 +1335,12 @@ export function calculateRationCostPerKg(
   rawMaterials: RawMaterial[] = []
 ): number {
   if (!ration || !ration.ingredients || ration.ingredients.length === 0) return 0;
+  const safeMaterials = Array.isArray(rawMaterials) ? rawMaterials : [];
   let totalCost = 0;
   let totalKg = 0;
 
   ration.ingredients.forEach((ing) => {
-    const rawMat = rawMaterials.find((rm) => rm.id === ing.rawMaterialId);
+    const rawMat = safeMaterials.find((rm) => rm.id === ing.rawMaterialId);
     const amount = Number(ing.amountKgPerHead) || 0;
     const price = Number(rawMat?.price) || 0;
     totalKg += amount;
@@ -1938,5 +2043,362 @@ export function calculateConsolidatedBatchIngredients(
   };
 
   return [premixRow, ...roughageItems];
+}
+
+export interface CategoryEconomicsItem {
+  categoryId: string;
+  categoryName: string;
+  categoryType: 'milking' | 'fattening' | 'dry' | 'heifer' | 'calf' | 'other';
+  barnCount: number;
+  barnNames: string[];
+  totalHeads: number;
+  dailyDemandKg: number;
+  dailyDemandTons: number;
+  rationId?: string;
+  rationName: string;
+  rationCostPerKg: number; // تكلفة كيلو العليقة (ج.م/كجم)
+  totalDailyFeedCost: number; // إجمالي تكلفة العلف اليومية للفئة (ج.م)
+  feedCostPerHeadPerDay: number; // تكلفة العلف للرأس/يوم (ج.م)
+  feedCostSharePercent: number; // حصة الفئة من إجمالي تكلفة علف المزرعة %
+  // Financial Returns
+  isRevenueGenerating: boolean;
+  revenueTypeLabel: string;
+  dailyRevenue: number; // إيراد الفئة اليومي (ج.م)
+  revenuePerHeadPerDay: number; // إيراد الرأس باليوم (ج.م)
+  netMarginOverFeed: number; // العائد فوق تكلفة العلف للفئة (IOFC / MOFC) (ج.م)
+  netMarginPerHeadPerDay: number; // صافي العائد للرأس/يوم (ج.م)
+  feedCostPercentOfRevenue: number; // نسبة تكلفة العلف من الإيراد % (للفئات الإنتاجية)
+  // Milking specific
+  milkTotalKg?: number;
+  milkAveragePerHead?: number;
+  milkPricePerKg?: number;
+  feedCostPerKgMilk?: number;
+  // Fattening specific
+  adgKg?: number;
+  liveMeatPricePerKg?: number;
+  totalDailyGainKg?: number;
+  feedCostPerKgGain?: number;
+}
+
+export interface WholeFarmEconomicsSummary {
+  totalFarmHeads: number;
+  activeBarnsCount: number;
+  totalFarmDemandKg: number;
+  totalFarmDemandTons: number;
+  totalFarmDailyFeedCost: number; // إجمالي تكلفة علف كل الفئات بلا استثناء
+  averageFeedCostPerHead: number; // متوسط تكلفة علف الرأس على مستوى كل المزرعة
+  // Revenues
+  totalMilkRevenue: number;
+  totalMeatGainRevenue: number;
+  totalFarmDailyRevenue: number; // إجمالي الإيرادات اليومية المقدرة
+  averageRevenuePerHead: number;
+  // Whole Farm Net Margins
+  wholeFarmNetMarginOverFeed: number; // صافي المزرعة اليومي بعد تغذية الكل = إجمالي الإيرادات - إجمالي علف كل القطعان
+  wholeFarmNetMarginPerHead: number; // صافي الربح اليومي لكل رأس بالمزرعة
+  wholeFarmFeedCostPercentOfRevenue: number; // نسبة العلف الشامل من إجمالي الدخل %
+  // Dairy IOFC isolated
+  dairyOnlyFeedCost: number;
+  dairyOnlyRevenue: number;
+  dairyOnlyIofc: number;
+  dairyTotalHeads: number;
+  dairyAverageIofcPerHead: number;
+  // Fattening MOFC isolated
+  fatteningOnlyFeedCost: number;
+  fatteningOnlyRevenue: number;
+  fatteningOnlyMofc: number;
+  fatteningTotalHeads: number;
+  fatteningAverageMofcPerHead: number;
+  // Non-producing / investment herd cost (dry, heifers, calves, etc.)
+  nonProducingFeedCost: number; // تكلفة تغذية القطيع غير المدر (استثمار ورعاية)
+  nonProducingHeads: number;
+  nonProducingFeedSharePercent: number;
+  // Simulation parameters used
+  milkPricePerKg: number;
+  liveMeatPricePerKg: number;
+  fatteningAdgKg: number;
+  // Breakdown list
+  categoriesBreakdown: CategoryEconomicsItem[];
+}
+
+/**
+ * Categorizes an animal category into standard operational types.
+ */
+export function detectCategoryType(categoryName: string): CategoryEconomicsItem['categoryType'] {
+  const name = categoryName.toLowerCase();
+  if (name.includes('حلاب') || name.includes('حليب') || name.includes('milk')) return 'milking';
+  if (name.includes('تسمين') || name.includes('عجول') || name.includes('beef') || name.includes('fatten')) return 'fattening';
+  if (name.includes('جاف') || name.includes('dry')) return 'dry';
+  if (name.includes('عشار') || name.includes('نامي') || name.includes('بكير') || name.includes('heifer')) return 'heifer';
+  if (name.includes('رضيع') || name.includes('فطام') || name.includes('calf') || name.includes('wean')) return 'calf';
+  return 'other';
+}
+
+/**
+ * Calculates Comprehensive Whole-Farm Economics and Category-by-Category Cost & Margin Analysis.
+ */
+export function calculateWholeFarmEconomics(
+  categories: AnimalCategory[],
+  barns: Barn[],
+  rations: Ration[],
+  rawMaterials: RawMaterial[],
+  dailyPlan?: DailyOperationPlan,
+  customParams?: {
+    milkPricePerKg?: number;
+    liveMeatPricePerKg?: number;
+    fatteningAdgKg?: number;
+  },
+  settings?: FarmSettings
+): WholeFarmEconomicsSummary {
+  const activeBarns = barns.filter((b) => b.status === 'نشط');
+
+  // Parameters
+  const milkPrice = customParams?.milkPricePerKg !== undefined
+    ? customParams.milkPricePerKg
+    : dailyPlan?.milkProduction?.milkPricePerKg ?? settings?.defaultMilkPricePerKg ?? 20.0;
+
+  const meatPrice = customParams?.liveMeatPricePerKg !== undefined
+    ? customParams.liveMeatPricePerKg
+    : dailyPlan?.fatteningMeatPricePerKg ?? settings?.defaultMeatPricePerKg ?? 175.0;
+
+  const fatteningAdg = customParams?.fatteningAdgKg !== undefined
+    ? customParams.fatteningAdgKg
+    : dailyPlan?.fatteningAdgKg ?? 1.5;
+
+  // Total milk produced today
+  const milkSessions = dailyPlan?.milkProduction?.sessions || [];
+  const totalMilkKg = milkSessions.reduce((sum, s) => sum + (Number(s.amountKg) || 0), 0);
+
+  // First pass: Calculate feed costs and heads per category
+  let totalFarmDemandKg = 0;
+  let totalFarmDailyFeedCost = 0;
+  let totalFarmHeads = 0;
+
+  // Count total milking heads across all milking categories to apportion milk if necessary
+  let totalMilkingHeadsInFarm = 0;
+  categories.forEach((cat) => {
+    if (detectCategoryType(cat.name) === 'milking') {
+      const catBarns = activeBarns.filter((b) => b.categoryId === cat.id);
+      const heads = catBarns.reduce((s, b) => s + (getBarnDailyState(b, dailyPlan).headCount || 0), 0);
+      totalMilkingHeadsInFarm += heads;
+    }
+  });
+
+  const categoryItems: CategoryEconomicsItem[] = categories.map((category) => {
+    const catType = detectCategoryType(category.name);
+    const catBarns = activeBarns.filter((b) => b.categoryId === category.id);
+    const barnNames = catBarns.map((b) => {
+      const bState = getBarnDailyState(b, dailyPlan);
+      return bState.displayNumber || b.number || b.name;
+    });
+
+    const heads = catBarns.reduce((s, b) => s + (getBarnDailyState(b, dailyPlan).headCount || 0), 0);
+    totalFarmHeads += heads;
+
+    // Daily demand & feed cost for this category
+    let catDemandKg = 0;
+    let catFeedCost = 0;
+
+    catBarns.forEach((barn) => {
+      const bDemand = calculateBarnDailyDemand(barn, categories, rations, dailyPlan);
+      const bRation = getBarnRation(barn, categories, rations, dailyPlan);
+      const bCostPerKg = calculateRationCostPerKg(bRation, rawMaterials);
+      catDemandKg += bDemand;
+      catFeedCost += bDemand * bCostPerKg;
+    });
+
+    catDemandKg = Math.round(catDemandKg * 10) / 10;
+    catFeedCost = Math.round(catFeedCost * 100) / 100;
+    totalFarmDemandKg += catDemandKg;
+    totalFarmDailyFeedCost += catFeedCost;
+
+    const defaultRation = rations.find((r) => r.id === category.rationId);
+    const defaultRationCost = defaultRation ? calculateRationCostPerKg(defaultRation, rawMaterials) : 0;
+    const avgRationCostPerKg = catDemandKg > 0
+      ? Math.round((catFeedCost / catDemandKg) * 100) / 100
+      : defaultRationCost;
+
+    const feedCostPerHead = heads > 0 ? Math.round((catFeedCost / heads) * 100) / 100 : 0;
+
+    // Revenues & margins by category type
+    let isRevenueGenerating = false;
+    let revenueTypeLabel = 'تكلفة رعاية واستثمار مستقبلي';
+    let dailyRevenue = 0;
+    let netMarginOverFeed = -catFeedCost;
+    let milkTotalKgCat: number | undefined;
+    let milkAvgHead: number | undefined;
+    let feedCostPerKgMilk: number | undefined;
+    let adgCat: number | undefined;
+    let totalDailyGainKg: number | undefined;
+    let feedCostPerKgGain: number | undefined;
+
+    if (catType === 'milking') {
+      isRevenueGenerating = true;
+      revenueTypeLabel = 'عائد إنتاج الحليب';
+      // If multiple milking categories, apportion milk by heads
+      const share = totalMilkingHeadsInFarm > 0 ? heads / totalMilkingHeadsInFarm : 1;
+      milkTotalKgCat = Math.round(totalMilkKg * share * 10) / 10;
+      dailyRevenue = Math.round(milkTotalKgCat * milkPrice * 100) / 100;
+      netMarginOverFeed = Math.round((dailyRevenue - catFeedCost) * 100) / 100;
+      milkAvgHead = heads > 0 ? Math.round((milkTotalKgCat / heads) * 100) / 100 : 0;
+      feedCostPerKgMilk = milkTotalKgCat > 0 ? Math.round((catFeedCost / milkTotalKgCat) * 100) / 100 : 0;
+    } else if (catType === 'fattening') {
+      isRevenueGenerating = true;
+      revenueTypeLabel = 'عائد التحويل والنمو الوزني';
+      adgCat = fatteningAdg;
+      totalDailyGainKg = Math.round(heads * fatteningAdg * 10) / 10;
+      dailyRevenue = Math.round(totalDailyGainKg * meatPrice * 100) / 100;
+      netMarginOverFeed = Math.round((dailyRevenue - catFeedCost) * 100) / 100;
+      feedCostPerKgGain = fatteningAdg > 0 && heads > 0
+        ? Math.round((feedCostPerHead / fatteningAdg) * 100) / 100
+        : 0;
+    }
+
+    const revenuePerHead = heads > 0 ? Math.round((dailyRevenue / heads) * 100) / 100 : 0;
+    const netMarginPerHead = heads > 0 ? Math.round((netMarginOverFeed / heads) * 100) / 100 : 0;
+    const feedCostPercentOfRevenue = dailyRevenue > 0
+      ? Math.round((catFeedCost / dailyRevenue) * 1000) / 10
+      : 0;
+
+    return {
+      categoryId: category.id,
+      categoryName: category.name,
+      categoryType: catType,
+      barnCount: catBarns.length,
+      barnNames,
+      totalHeads: heads,
+      dailyDemandKg: catDemandKg,
+      dailyDemandTons: Math.round((catDemandKg / 1000) * 100) / 100,
+      rationId: category.rationId,
+      rationName: defaultRation?.name || 'غير محددة',
+      rationCostPerKg: avgRationCostPerKg,
+      totalDailyFeedCost: catFeedCost,
+      feedCostPerHeadPerDay: feedCostPerHead,
+      feedCostSharePercent: 0, // Calculated below
+      isRevenueGenerating,
+      revenueTypeLabel,
+      dailyRevenue,
+      revenuePerHeadPerDay: revenuePerHead,
+      netMarginOverFeed,
+      netMarginPerHeadPerDay: netMarginPerHead,
+      feedCostPercentOfRevenue,
+      milkTotalKg: milkTotalKgCat,
+      milkAveragePerHead: milkAvgHead,
+      milkPricePerKg: catType === 'milking' ? milkPrice : undefined,
+      feedCostPerKgMilk,
+      adgKg: adgCat,
+      liveMeatPricePerKg: catType === 'fattening' ? meatPrice : undefined,
+      totalDailyGainKg,
+      feedCostPerKgGain,
+    };
+  });
+
+  // Calculate share of total feed cost for each category
+  categoryItems.forEach((item) => {
+    item.feedCostSharePercent = totalFarmDailyFeedCost > 0
+      ? Math.round((item.totalDailyFeedCost / totalFarmDailyFeedCost) * 1000) / 10
+      : 0;
+  });
+
+  // Aggregate Farm Revenues & Groups
+  let totalMilkRevenue = 0;
+  let totalMeatGainRevenue = 0;
+
+  let dairyOnlyFeedCost = 0;
+  let dairyOnlyRevenue = 0;
+  let dairyTotalHeads = 0;
+
+  let fatteningOnlyFeedCost = 0;
+  let fatteningOnlyRevenue = 0;
+  let fatteningTotalHeads = 0;
+
+  let nonProducingFeedCost = 0;
+  let nonProducingHeads = 0;
+
+  categoryItems.forEach((item) => {
+    if (item.categoryType === 'milking') {
+      dairyOnlyFeedCost += item.totalDailyFeedCost;
+      dairyOnlyRevenue += item.dailyRevenue;
+      dairyTotalHeads += item.totalHeads;
+      totalMilkRevenue += item.dailyRevenue;
+    } else if (item.categoryType === 'fattening') {
+      fatteningOnlyFeedCost += item.totalDailyFeedCost;
+      fatteningOnlyRevenue += item.dailyRevenue;
+      fatteningTotalHeads += item.totalHeads;
+      totalMeatGainRevenue += item.dailyRevenue;
+    } else {
+      nonProducingFeedCost += item.totalDailyFeedCost;
+      nonProducingHeads += item.totalHeads;
+    }
+  });
+
+  totalMilkRevenue = Math.round(totalMilkRevenue * 100) / 100;
+  totalMeatGainRevenue = Math.round(totalMeatGainRevenue * 100) / 100;
+  const totalFarmDailyRevenue = Math.round((totalMilkRevenue + totalMeatGainRevenue) * 100) / 100;
+
+  totalFarmDailyFeedCost = Math.round(totalFarmDailyFeedCost * 100) / 100;
+  const wholeFarmNetMarginOverFeed = Math.round((totalFarmDailyRevenue - totalFarmDailyFeedCost) * 100) / 100;
+
+  const averageFeedCostPerHead = totalFarmHeads > 0
+    ? Math.round((totalFarmDailyFeedCost / totalFarmHeads) * 100) / 100
+    : 0;
+
+  const averageRevenuePerHead = totalFarmHeads > 0
+    ? Math.round((totalFarmDailyRevenue / totalFarmHeads) * 100) / 100
+    : 0;
+
+  const wholeFarmNetMarginPerHead = totalFarmHeads > 0
+    ? Math.round((wholeFarmNetMarginOverFeed / totalFarmHeads) * 100) / 100
+    : 0;
+
+  const wholeFarmFeedCostPercentOfRevenue = totalFarmDailyRevenue > 0
+    ? Math.round((totalFarmDailyFeedCost / totalFarmDailyRevenue) * 1000) / 10
+    : 0;
+
+  const dairyOnlyIofc = Math.round((dairyOnlyRevenue - dairyOnlyFeedCost) * 100) / 100;
+  const dairyAverageIofcPerHead = dairyTotalHeads > 0
+    ? Math.round((dairyOnlyIofc / dairyTotalHeads) * 100) / 100
+    : 0;
+
+  const fatteningOnlyMofc = Math.round((fatteningOnlyRevenue - fatteningOnlyFeedCost) * 100) / 100;
+  const fatteningAverageMofcPerHead = fatteningTotalHeads > 0
+    ? Math.round((fatteningOnlyMofc / fatteningTotalHeads) * 100) / 100
+    : 0;
+
+  const nonProducingFeedSharePercent = totalFarmDailyFeedCost > 0
+    ? Math.round((nonProducingFeedCost / totalFarmDailyFeedCost) * 1000) / 10
+    : 0;
+
+  return {
+    totalFarmHeads,
+    activeBarnsCount: activeBarns.length,
+    totalFarmDemandKg: Math.round(totalFarmDemandKg * 10) / 10,
+    totalFarmDemandTons: Math.round((totalFarmDemandKg / 1000) * 100) / 100,
+    totalFarmDailyFeedCost,
+    averageFeedCostPerHead,
+    totalMilkRevenue,
+    totalMeatGainRevenue,
+    totalFarmDailyRevenue,
+    averageRevenuePerHead,
+    wholeFarmNetMarginOverFeed,
+    wholeFarmNetMarginPerHead,
+    wholeFarmFeedCostPercentOfRevenue,
+    dairyOnlyFeedCost: Math.round(dairyOnlyFeedCost * 100) / 100,
+    dairyOnlyRevenue: Math.round(dairyOnlyRevenue * 100) / 100,
+    dairyOnlyIofc,
+    dairyTotalHeads,
+    dairyAverageIofcPerHead,
+    fatteningOnlyFeedCost: Math.round(fatteningOnlyFeedCost * 100) / 100,
+    fatteningOnlyRevenue: Math.round(fatteningOnlyRevenue * 100) / 100,
+    fatteningOnlyMofc,
+    fatteningTotalHeads,
+    fatteningAverageMofcPerHead,
+    nonProducingFeedCost: Math.round(nonProducingFeedCost * 100) / 100,
+    nonProducingHeads,
+    nonProducingFeedSharePercent,
+    milkPricePerKg: milkPrice,
+    liveMeatPricePerKg: meatPrice,
+    fatteningAdgKg: fatteningAdg,
+    categoriesBreakdown: categoryItems,
+  };
 }
 

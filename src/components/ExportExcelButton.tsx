@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FileSpreadsheet, Download, Check } from 'lucide-react';
 import { useFeedback } from '../context/FeedbackContext';
+import { useLanguage } from '../context/LanguageContext';
 
 interface ExportExcelButtonProps {
   onExport: () => void;
@@ -13,12 +14,17 @@ interface ExportExcelButtonProps {
 
 export const ExportExcelButton: React.FC<ExportExcelButtonProps> = ({
   onExport,
-  title = 'تصدير كشف إكسيل (Excel .xlsx)',
-  label = 'تصدير إكسيل (Excel)',
+  title,
+  label,
   variant = 'primary',
   className = '',
   disabled = false,
 }) => {
+  const { language } = useLanguage();
+  const isEn = language === 'en';
+  const resolvedTitle = title || (isEn ? 'Export to Excel (.xlsx)' : 'تصدير كشف إكسيل (Excel .xlsx)');
+  const resolvedLabel = label || (isEn ? 'Export to Excel' : 'تصدير إكسيل (Excel)');
+
   const { showToast } = useFeedback();
   const [isExported, setIsExported] = useState(false);
 
@@ -29,11 +35,19 @@ export const ExportExcelButton: React.FC<ExportExcelButtonProps> = ({
     try {
       onExport();
       setIsExported(true);
-      showToast('تم تصدير ملف الإكسيل بنجاح.', 'success');
+      showToast(
+        isEn ? 'Excel file exported successfully.' : 'تم تصدير ملف الإكسيل بنجاح.',
+        'success'
+      );
       setTimeout(() => setIsExported(false), 2000);
     } catch (error) {
       console.error('Excel Export Error:', error);
-      showToast('حدث خطأ أثناء تصدير ملف الإكسيل. يرجى المحاولة مرة أخرى.', 'error');
+      showToast(
+        isEn
+          ? 'Error exporting Excel file. Please try again.'
+          : 'حدث خطأ أثناء تصدير ملف الإكسيل. يرجى المحاولة مرة أخرى.',
+        'error'
+      );
     }
   };
 
@@ -56,7 +70,7 @@ export const ExportExcelButton: React.FC<ExportExcelButtonProps> = ({
         type="button"
         onClick={handleClick}
         disabled={disabled}
-        title={title}
+        title={resolvedTitle}
         className={`inline-flex items-center justify-center transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${getVariantStyles()} ${className}`}
       >
         {isExported ? (
@@ -73,18 +87,18 @@ export const ExportExcelButton: React.FC<ExportExcelButtonProps> = ({
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      title={title}
+      title={resolvedTitle}
       className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${getVariantStyles()} ${className}`}
     >
       {isExported ? (
         <>
           <Check className="w-4 h-4 text-white shrink-0 animate-bounce" />
-          <span>تم التصدير بنجاح!</span>
+          <span>{isEn ? 'Exported Successfully!' : 'تم التصدير بنجاح!'}</span>
         </>
       ) : (
         <>
           <FileSpreadsheet className="w-4 h-4 shrink-0 text-emerald-200" />
-          <span>{label}</span>
+          <span>{resolvedLabel}</span>
           <Download className="w-3.5 h-3.5 opacity-70 shrink-0" />
         </>
       )}

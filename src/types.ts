@@ -57,6 +57,7 @@ export interface Barn {
   refusalValue?: number; // قيمة الراجع للعنبر (مثال 5% أو 150 كجم)
   recycledRefusalAllocatedKg?: number; // كمية راجع الحلاب المحولة والمخصصة لهذا العنبر
   status: 'نشط' | 'صيانة' | 'فارغ';
+  orderIndex?: number; // ترتيب ظهور العنبر في القوائم والشاشات
   notes?: string;
 }
 
@@ -178,7 +179,7 @@ export interface ConcentratePremixOrder {
   totalBags: number; // Math.floor(batchWeightKg / bagWeightKg)
   remainingLooseKg: number; // batchWeightKg % bagWeightKg
   ingredients: ConcentrateIngredientItem[];
-  status: 'مكتمل ومعبأ' | 'قيد الخلط والتعبئة';
+  status: 'مكتمل ومعبأ' | 'قيد الخلط والتعبئة' | 'Completed & Bagged' | 'Mixing & Bagging in Progress';
   mixerName?: string;
   totalCost?: number;
   costPerBag?: number;
@@ -204,6 +205,7 @@ export interface DailyOperationPlan {
   warehouseState?: Record<string, DailyWarehouseItemState>; // rawMaterialId -> daily state
   warehouseTransactions?: WarehouseTransaction[];
   fatteningAdgKg?: number; // معدل الزيادة اليومية المتوقعة للتسمين كجم/رأس/يوم (مثال: 1.5)
+  fatteningMeatPricePerKg?: number; // سعر بيع كيلو اللحم القائم للتسمين (مثال: 175 ج.م)
   concentrateOrders?: ConcentratePremixOrder[]; // أوامر تشغيل خلاطة المركز وتعبئة الشكاير
   useConcentratePremixMode?: boolean; // تفعيل نمط الشكاير والمركز المسبق في أوامر تحضير المكسر
   premixBagWeightKg?: number; // وزن الشكارة المعتمد (افتراضياً 50 كجم)
@@ -212,19 +214,52 @@ export interface DailyOperationPlan {
   notes?: string;
 }
 
+export type AppLanguage = 'ar' | 'en';
+
+export type AutoBackupFrequency = 'daily' | 'every_12_hours' | 'weekly';
+
+export interface AutoBackupConfig {
+  enabled: boolean;
+  frequency: AutoBackupFrequency;
+  maxSnapshots?: number;
+  lastBackupTimestamp?: string;
+  autoDownloadFile?: boolean;
+}
+
+export interface BackupSnapshot {
+  id: string;
+  timestamp: string;
+  dateFormatted: string;
+  label?: string;
+  dataSizeKb: number;
+  summary: {
+    barnsCount: number;
+    rawMaterialsCount: number;
+    rationsCount: number;
+    categoriesCount: number;
+    mixersCount: number;
+  };
+  data: Record<string, any>;
+}
+
 export interface FarmSettings {
   farmName: string;
   engineerName: string;
   warehouseManagerName: string;
   driverName: string;
   currency: string;
+  language?: AppLanguage;
   hasConcentrateMixer?: boolean; // هل يوجد خلاطة مركز وتعبئة شكاير بالمزرعة؟ (true: مفعل، false: ملغي والخلط مباشر فقط)
   defaultBagWeightKg?: number; // وزن الشكارة الافتراضي (مثال: 50 كجم، 25 كجم...)
+  defaultMilkPricePerKg?: number; // سعر كيلو الحليب الافتراضي
+  defaultMeatPricePerKg?: number; // سعر كيلو اللحم القائم الافتراضي للتسمين
+  autoBackup?: AutoBackupConfig;
 }
 
 export type ActiveTab =
   | 'dashboard'
   | 'daily_plan'
+  | 'farm_economics'
   | 'concentrate_premix'
   | 'distributions'
   | 'prep_orders'
@@ -237,4 +272,5 @@ export type ActiveTab =
   | 'categories'
   | 'barns'
   | 'mixers'
-  | 'settings';
+  | 'settings'
+  | 'developer_contact';
